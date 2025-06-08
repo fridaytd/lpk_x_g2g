@@ -1,8 +1,8 @@
-from app import config
-from app.g2g.api_client import g2g_api_client
+# from app import config
+# from app.g2g.api_client import g2g_api_client
 # from app.sheet.models import RowModel, BatchCellUpdatePayload
 
-from app.lpk.api_client import lpk_api_client
+# from app.lpk.api_client import lpk_api_client
 
 # brands = g2g_api_client.get_brand(
 #     service_id="90015a0f-3983-4953-8368-96ac181d9e92"
@@ -23,4 +23,9 @@ from app.lpk.api_client import lpk_api_client
 # )
 
 
-print(lpk_api_client.get_all_products(country_code="sa"))
+# print(lpk_api_client.get_all_products(country_code="sa"))
+
+
+from app.sheet.models import Log
+
+Log.write_log("anh Dang dep trai")

@@ -2,14 +2,16 @@ from typing import Final
 
 from app import logger, config
 
-from app.sheet.models import G2GProduct
+from app.sheet.models import G2GTopUpProduct
 from app.g2g.api_client import g2g_api_client
 
 from typing import TypedDict
 
 
 class Attribute(TypedDict):
-    attribute: str
+    attribute_group_id: str
+    attribute_id: str
+    attribute_name: str
     attribute_value: str
 
 
@@ -203,15 +205,11 @@ selling_brand_id: list[str] = [
 
 SERVICE_ID: Final[str] = "90015a0f-3983-4953-8368-96ac181d9e92"
 SHEET_ID: Final[str] = config.SHEET_ID
-SHEET_NAME: Final[str] = "G2G Top Up Data"
+SHEET_NAME: Final[str] = "G2GxLapak Mapping"
 
 
 def update_new_sheet_data():
-    worksheet = G2GProduct.get_worksheet(config.SHEET_ID, config.SHEET_NAME)
-
-    platforms_data: list[NewPlatformDataDict] = []
-
-    logger.info(f"Getting brands of sevice: TOP UP")
+    logger.info("Getting brands of sevice: TOP UP")
 
     brand_response = g2g_api_client.get_brand(service_id=SERVICE_ID)
     brands = brand_response.payload.brand_list
@@ -220,6 +218,8 @@ def update_new_sheet_data():
     item_count = 0
 
     for brand in brands:
+        g2g_top_up_products: list[G2GTopUpProduct] = []
+
         if brand.brand_id not in selling_brand_id:
             continue
 
@@ -233,70 +233,61 @@ def update_new_sheet_data():
         logger.info(f"Total of {brand.brand_name}'s products: {len(products)}")
         for product in products:
             logger.info(f"Getting {product.product_name}'s attributes")
-            attributes: list[Attribute] = []
 
             attribute_response = g2g_api_client.get_attribute(
                 product_id=product.product_id
             )
 
             for attribute_group in attribute_response.payload.attribute_group_list:
-                attribute_values = []
-                for attr in attribute_group.attribute_list:
-                    if len(attr.sub_attribute_list) > 0:
-                        for sub_attr in attr.sub_attribute_list:
-                            attribute_values.append(
-                                f"{attr.attribute_name} | {sub_attr.attribute_name}"
+                for attribute in attribute_group.attribute_list:
+                    if len(attribute.sub_attribute_list) > 0:
+                        for sub_attribute in attribute.sub_attribute_list:
+                            g2g_top_up_products.append(
+                                G2GTopUpProduct(
+                                    sheet_id=SHEET_ID,
+                                    sheet_name=SHEET_NAME,
+                                    index=item_count + 2,
+                                    STT=item_count + 1,
+                                    service_id=SERVICE_ID,
+                                    service_name="Top Up",
+                                    brand_id=brand.brand_id,
+                                    brand_name=brand.brand_name,
+                                    service_option=attribute_group.attribute_group_name,
+                                    product_id=product.product_id,
+                                    product_name=product.product_name,
+                                    attribute_group_id=attribute_group.attribute_group_id,
+                                    attribute_name=attribute_group.attribute_group_name,
+                                    attribute_id=attribute.attribute_id,
+                                    attribute_value=attribute.attribute_name,
+                                    sub_attribute_id=sub_attribute.attribute_id,
+                                    sub_attribute_value=sub_attribute.attribute_name,
+                                )
                             )
+                            item_count += 1
                     else:
-                        attribute_values.append(attr.attribute_name)
+                        g2g_top_up_products.append(
+                            G2GTopUpProduct(
+                                sheet_id=SHEET_ID,
+                                sheet_name=SHEET_NAME,
+                                index=item_count + 2,
+                                STT=item_count + 1,
+                                service_id=SERVICE_ID,
+                                service_name="Top Up",
+                                brand_id=brand.brand_id,
+                                brand_name=brand.brand_name,
+                                service_option=attribute_group.attribute_group_name,
+                                product_id=product.product_id,
+                                product_name=product.product_name,
+                                attribute_group_id=attribute_group.attribute_group_id,
+                                attribute_name=attribute_group.attribute_group_name,
+                                attribute_id=attribute.attribute_id,
+                                attribute_value=attribute.attribute_name,
+                            )
+                        )
+                        item_count += 1
 
-                attributes.append(
-                    {
-                        "attribute": attribute_group.attribute_group_name,
-                        "attribute_value": "\n".join(attribute_values),
-                    }
-                )
-
-            platforms_data.append(
-                {
-                    "STT": item_count + 1,
-                    "service_id": SERVICE_ID,
-                    "service_name": "Top Up",
-                    "brand_id": brand.brand_id,
-                    "brand_name": brand.brand_name,
-                    "service_option": "Top Up > {brand.brand_name}",
-                    "product_id": product.product_id,
-                    "product_name": product.product_name,
-                    "attributes": attributes,
-                }
-            )
-            item_count += 1
-    logger.info("Sheet updating")
-    sheet_platform_datas: list[G2GProduct] = []
-    for platform_data in platforms_data:
-        tmp_dict = {
-            "sheet_id": SHEET_ID,
-            "sheet_name": SHEET_NAME,
-            "index": platform_data["STT"] + 1,
-        }
-        for i, attribute in enumerate(platform_data["attributes"]):
-            tmp_dict.update(
-                {
-                    f"attribute_{i + 1}": attribute["attribute"],
-                    f"attribute_{i + 1}_value": attribute["attribute_value"],
-                }
-            )
-        tmp_dict.update(platform_data)
-        sheet_platform_datas.append(G2GProduct.model_validate(tmp_dict))
-
-    G2GProduct.batch_update(
-        sheet_id=SHEET_ID,
-        sheet_name=SHEET_NAME,
-        list_object=sheet_platform_datas,
-    )
-
-    platforms_data = []
-    sheet_platform_datas = []
-
-
-update_new_sheet_data()
+        G2GTopUpProduct.batch_update(
+            sheet_id=SHEET_ID,
+            sheet_name=SHEET_NAME,
+            list_object=g2g_top_up_products,
+        )

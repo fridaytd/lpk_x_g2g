@@ -1,6 +1,12 @@
 from pydantic import BaseModel
 
-from .enums import OrderStatus, OrderPaymentStatus, OrderEventType
+from .enums import (
+    OrderStatus,
+    OrderPaymentStatus,
+    OrderEventType,
+    DeliveryMethodCode,
+    DeliveryMode,
+)
 
 
 class OtherPricing(BaseModel):
@@ -57,8 +63,42 @@ class ConfirmedOrderPayload(BaseModel):
     order_created_at: int
 
 
+class AttributeItem(BaseModel):
+    attribute_group_id: str
+    attribute_group_name: str
+    attribute_id: str
+    attribute_key: str
+    attribute_value: str
+    value: str
+
+
+class DeliverySummary(BaseModel):
+    delivery_id: str
+    delivery_method_code: DeliveryMethodCode
+    delivery_method_list: list[AttributeItem]
+    delivery_mode: DeliveryMode
+    case_id: str
+    requested_qty: int
+    requested_at: int
+    expired_at: int
+
+
+class APIDeliveryPayload(BaseModel):
+    order_id: str
+    buyer_id: str
+    seller_id: str
+    offer_id: str
+    purchased_qty: int
+    defected_qty: int
+    delivered_qty: int
+    refunded_qty: int
+    replacement_qty: int
+    undelivered_qty: int
+    delivery_summary: DeliverySummary
+
+
 class OrderEvent(BaseModel):
     id: str
     event_happened_at: int
     event_type: OrderEventType
-    payload: CreatedOrderPayload
+    payload: dict

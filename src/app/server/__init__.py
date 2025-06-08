@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
-from .routes import g2g, lapak
+from .routes.g2g.router import router as g2g_router
+from .routes import lapak
 
 app = FastAPI(title=config.APP_TITLE)
 
@@ -15,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(g2g.router)
+app.include_router(g2g_router)
 app.include_router(lapak.router)
 
 

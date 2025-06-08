@@ -1,11 +1,20 @@
 from datetime import datetime
 
-from typing import Annotated, Final, Self, TypeVar, Generic, Any
+from typing import (
+    Annotated,
+    Final,
+    Self,
+    TypeVar,
+    Generic,
+    Any,
+    ClassVar,
+)
 
 from gspread.worksheet import Worksheet
 from gspread.utils import ValueInputOption
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
+from app import config
 
 from ..shared.decorators import retry_on_fail
 from .enums import CheckType
@@ -425,7 +434,7 @@ class RowModel(ColSheetModel):
         return run_indexes
 
 
-class G2GProduct(ColSheetModel):
+class G2GTopUpProduct(ColSheetModel):
     STT: Annotated[
         int,
         {
@@ -482,32 +491,180 @@ class G2GProduct(ColSheetModel):
             IS_UPDATE_META: True,
         },
     ]
-    attributes: list | None = None
     attribute_group_id: Annotated[
+        str,
+        {
+            COL_META: "I",
+            IS_UPDATE_META: True,
+        },
+    ]
+    attribute_name: Annotated[
+        str,
+        {
+            COL_META: "J",
+            IS_UPDATE_META: True,
+        },
+    ]
+    attribute_id: Annotated[
+        str,
+        {
+            COL_META: "K",
+            IS_UPDATE_META: True,
+        },
+    ]
+
+    attribute_value: Annotated[
+        str,
+        {
+            COL_META: "L",
+            IS_UPDATE_META: True,
+        },
+    ]
+    sub_attribute_id: Annotated[
+        str | None,
+        {
+            COL_META: "M",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    sub_attribute_value: Annotated[
+        str | None,
+        {
+            COL_META: "N",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    lapak_code: Annotated[
+        str | None,
+        {
+            COL_META: "O",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+
+
+class LPKProduct(ColSheetModel):
+    CHECK: Annotated[
+        str | None,
+        {
+            COL_META: "A",
+        },
+    ] = None
+    code: Annotated[
+        str | None,
+        {
+            COL_META: "B",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    category_code: Annotated[
+        str | None,
+        {
+            COL_META: "C",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    category: Annotated[
+        str | None,
+        {
+            COL_META: "D",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    name: Annotated[
+        str | None,
+        {
+            COL_META: "E",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    provider_code: Annotated[
+        str | None,
+        {
+            COL_META: "F",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    price: Annotated[
+        str | None,
+        {
+            COL_META: "G",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    process_time: Annotated[
+        str | None,
+        {
+            COL_META: "H",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    country_code: Annotated[
         str | None,
         {
             COL_META: "I",
             IS_UPDATE_META: True,
         },
     ] = None
-    attribute_id: Annotated[
+    status: Annotated[
         str | None,
         {
             COL_META: "J",
             IS_UPDATE_META: True,
         },
     ] = None
-    attribute: Annotated[
+    Note: Annotated[
         str | None,
         {
             COL_META: "K",
             IS_UPDATE_META: True,
+            IS_NOTE_META: True,
         },
     ] = None
-    attribute: Annotated[
+
+    @field_validator("price", "process_time", mode="before")
+    def convert_to_str(cls, v):
+        return str(v) if isinstance(v, (int, float)) else v
+
+
+class LogToSheet(ColSheetModel):
+    # Instance attributes
+    sheet_id: ClassVar[str] = config.LOG_SHEET_ID
+    sheet_name: ClassVar[str] = config.LOG_SHEET_NAME
+
+    time: Annotated[
         str | None,
         {
-            COL_META: "K",
+            COL_META: "A",
             IS_UPDATE_META: True,
         },
     ] = None
+    note: Annotated[
+        str | None,
+        {
+            COL_META: "B",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+
+    @classmethod
+    def get_last_log_row(
+        cls,
+    ) -> int:
+        worksheet = cls.get_worksheet(
+            sheet_id=cls.sheet_id,
+            sheet_name=cls.sheet_name,
+        )
+
+        return len(worksheet.col_values(1))
+
+    @staticmethod
+    def write_log(
+        note: str,
+    ) -> None:
+        last_row_index = LogToSheet.get_last_log_row()
+        LogToSheet(
+            index=last_row_index + 1,
+            time=formated_datetime(datetime.now()),
+            note=note,
+        ).update()

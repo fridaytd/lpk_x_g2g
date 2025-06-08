@@ -35,3 +35,13 @@ class OrderPaymentStatus(Enum):
     TO_PAY = "to_pay"
     PAID = "paid"
     CANCELLED = "cancelled"
+
+
+class DeliveryMethodCode(Enum):
+    INSTANT_INVENTORY = "instant_inventory"
+    DIRECT_TOP_UP = "direct_top_up"
+
+
+class DeliveryMode(Enum):
+    NORMAL = "normal"
+    REPLACEMENT = "replacement"

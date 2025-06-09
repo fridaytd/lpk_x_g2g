@@ -3,9 +3,11 @@ import hmac
 
 from datetime import datetime
 
+from typing import cast
 from httpx import Client, HTTPStatusError
 
 from .. import config
+from . import logger
 from .consts import G2G_API_URL, G2G_API_VERSION
 from .models import (
     AuthorizationHeader,
@@ -17,6 +19,9 @@ from .models import (
     CreateOfferRequest,
     CreateOfferResponse,
     DeleteOfferResponse,
+    Order,
+    PatchDeliveryPayload,
+    PathchDeliveryResponse,
 )
 from .exceptions import G2GAPIError
 from ..shared.decorators import retry_on_fail
@@ -29,7 +34,7 @@ class G2GAPIClient:
             timeout=20,
         )
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def generate_authorization_header(
         self,
         canonical_url: str,
@@ -55,14 +60,14 @@ class G2GAPIClient:
         }
         return authorization_header
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def get_service(
         self,
     ) -> ResponseModel[ServicePayload]:
         canonical_url = f"/{G2G_API_VERSION}/services"
         headers = self.generate_authorization_header(canonical_url=canonical_url)
 
-        res = self.http_client.get(canonical_url, headers=headers)  # type: ignore
+        res = self.http_client.get(canonical_url, headers=cast(dict[str, str], headers))
         try:
             res.raise_for_status()
         except HTTPStatusError:
@@ -70,7 +75,7 @@ class G2GAPIClient:
 
         return ResponseModel[ServicePayload].model_validate(res.json())
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def get_brand(
         self,
         service_id: str,
@@ -78,7 +83,7 @@ class G2GAPIClient:
         canonical_url = f"/{G2G_API_VERSION}/services/{service_id}/brands"
         headers = self.generate_authorization_header(canonical_url=canonical_url)
 
-        res = self.http_client.get(canonical_url, headers=headers)  # type: ignore
+        res = self.http_client.get(canonical_url, headers=cast(dict[str, str], headers))
 
         try:
             res.raise_for_status()
@@ -87,7 +92,7 @@ class G2GAPIClient:
 
         return ResponseModel[BrandPayLoad].model_validate(res.json())
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def get_product(
         self,
         category_id: str | None = None,
@@ -110,7 +115,7 @@ class G2GAPIClient:
 
             res = self.http_client.get(
                 canonical_url,
-                headers=headers,  # type: ignore
+                headers=cast(dict[str, str], headers),
                 params=query_params,
             )
             try:
@@ -123,7 +128,7 @@ class G2GAPIClient:
 
         raise G2GAPIError(status_code=400, detail="Invalid query parameter")
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def get_attribute(
         self,
         product_id: str,
@@ -131,7 +136,7 @@ class G2GAPIClient:
         canonical_url = f"/{G2G_API_VERSION}/products/{product_id}/attributes"
         headers = self.generate_authorization_header(canonical_url)
 
-        res = self.http_client.get(canonical_url, headers=headers)  # type: ignore
+        res = self.http_client.get(canonical_url, headers=cast(dict[str, str], headers))
 
         try:
             res.raise_for_status()
@@ -140,7 +145,7 @@ class G2GAPIClient:
 
         return ResponseModel[AttributePayload].model_validate(res.json())
 
-    # @retry_on_fail(max_retries=5, sleep_interval=2)
+    # @retry_on_fail(max_retries=3, sleep_interval=2)
     def create_offer(
         self, create_offer_request: CreateOfferRequest
     ) -> ResponseModel[CreateOfferResponse]:
@@ -151,7 +156,7 @@ class G2GAPIClient:
 
         res = self.http_client.post(
             canonical_url,
-            headers=headers,  # type: ignore
+            headers=cast(dict[str, str], headers),
             data=create_offer_request.model_dump(mode="json"),
         )
         try:
@@ -162,7 +167,7 @@ class G2GAPIClient:
         print(res.json())
         return ResponseModel[CreateOfferResponse].model_validate(res.json())
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def update_offer(
         self,
         offer_id: str,
@@ -173,7 +178,7 @@ class G2GAPIClient:
 
         res = self.http_client.patch(
             canonical_url,
-            headers=headers,  # type: ignore
+            headers=cast(dict[str, str], headers),
             data=update_offer_request.model_dump(mode="json"),
         )
         try:
@@ -183,7 +188,7 @@ class G2GAPIClient:
 
         return ResponseModel[CreateOfferResponse].model_validate(res.json())
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def delete_offer(
         self,
         offer_id: str,
@@ -193,7 +198,7 @@ class G2GAPIClient:
 
         res = self.http_client.delete(
             canonical_url,
-            headers=headers,  # type: ignore
+            headers=cast(dict[str, str], headers),
         )
         try:
             res.raise_for_status()
@@ -202,24 +207,16 @@ class G2GAPIClient:
 
         return ResponseModel[DeleteOfferResponse].model_validate(res.json())
 
-    @retry_on_fail(max_retries=5, sleep_interval=2)
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def search_offer(self):
         canonical_url = f"/{G2G_API_VERSION}/offers/search"
         headers = self.generate_authorization_header(canonical_url)
 
-        payload = {
-            # "filter": {
-            #     "brand_id": "lgc_game_22664",
-            #     "status": "live",
-            #     "query": "Dota 2",
-            # },
-            # "page_size": 20,
-            # "page": 1,
-        }
+        payload = {}
 
         res = self.http_client.post(
             canonical_url,
-            headers=headers,  # type: ignore
+            headers=cast(dict[str, str], headers),
             data=payload,
         )
         try:
@@ -228,6 +225,48 @@ class G2GAPIClient:
             raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
         print(res.json())
+
+    @retry_on_fail(max_retries=3, sleep_interval=2)
+    def get_order(
+        self,
+        order_id: str,
+    ) -> ResponseModel[Order]:
+        canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}"
+        headers = self.generate_authorization_header(canonical_url)
+        res = self.http_client.get(
+            canonical_url,
+            headers=cast(dict[str, str], headers),
+        )
+
+        try:
+            res.raise_for_status()
+        except HTTPStatusError:
+            logger.exception(res.text)
+            raise G2GAPIError(status_code=res.status_code, detail=res.text)
+
+        return ResponseModel[Order].model_validate(res.json())
+
+    @retry_on_fail(max_retries=3, sleep_interval=2)
+    def patch_delivery_order(
+        self,
+        order_id: str,
+        delivery_id: str,
+        payload: PatchDeliveryPayload,
+    ) -> ResponseModel[PathchDeliveryResponse]:
+        canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}/delivery/{delivery_id}"
+        headers = self.generate_authorization_header(canonical_url)
+        res = self.http_client.patch(
+            canonical_url,
+            headers=cast(dict[str, str], headers),
+            data=payload.model_dump(mode="json"),
+        )
+        try:
+            res.raise_for_status()
+        except HTTPStatusError:
+            logger.exception(res.text)
+            raise G2GAPIError(status_code=res.status_code, detail=res.text)
+
+        return ResponseModel[PathchDeliveryResponse].model_validate(res.json)
 
 
 g2g_api_client = G2GAPIClient()

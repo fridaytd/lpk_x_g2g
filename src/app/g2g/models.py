@@ -1,6 +1,13 @@
 from pydantic import BaseModel
-from typing import TypedDict, Generic, TypeVar, Literal
+from typing import (
+    TypedDict,
+    Generic,
+    TypeVar,
+    Literal,
+    Optional,
+)
 
+from .enums import OrderStatus
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -180,3 +187,47 @@ class CreateOfferResponse(BaseModel):
 
 class DeleteOfferResponse(BaseModel):
     success: bool
+
+
+#############
+#
+#   ORDERS
+#
+#############
+
+
+class Order(BaseModel):
+    order_id: str
+    seller_store_name: str
+    seller_id: str
+    buyer_id: str
+    order_status: OrderStatus
+    amount: float
+    unit_price: float
+    currency: str  # ISO currency code, e.g., "USD", "EUR"
+    purchased_qty: int
+    delivered_qty: int
+    refunded_qty: int
+    defected_qty: int
+    replacement_qty: int
+    created_at: int  # Timestamp in milliseconds
+    updated_at: int  # Timestamp in milliseconds
+
+
+class PatchDeliveryPayload(BaseModel):
+    delivered_qty: int
+    delivery_issue: Optional[
+        Literal["incorrect_delivery_detail", "insufficient_stock", "others"]
+    ]
+    delivered_at: int
+    reference_id: Optional[str]
+
+
+class PathchDeliveryResponse(BaseModel):
+    delivery_id: str
+    delivered_qty: int
+    delivery_issue: Optional[
+        Literal["incorrect_delivery_detail", "insufficient_stock", "others"]
+    ]
+    delivered_at: int
+    reference_id: Optional[str]

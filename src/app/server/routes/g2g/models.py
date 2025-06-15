@@ -80,7 +80,7 @@ class DeliverySummary(BaseModel):
     case_id: str
     requested_qty: int
     requested_at: int
-    expired_at: int
+    expired_at: int = 0
 
 
 class APIDeliveryPayload(BaseModel):

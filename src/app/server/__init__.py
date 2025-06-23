@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
 from .routes.g2g.router import router as g2g_router
-from .routes import lapak
+
+from .routes.lapak.router import router as lpk_router
 
 app = FastAPI(title=config.APP_TITLE)
 
@@ -17,7 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(g2g_router)
-app.include_router(lapak.router)
+app.include_router(lpk_router)
 
 
 @app.get("/")

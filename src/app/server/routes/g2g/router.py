@@ -24,8 +24,10 @@ async def webhook(order_event: OrderEvent, _: VerifySignatureDep):
         case OrderEventType.ORDER_API_DELIVERY:
             payload = APIDeliveryPayload.model_validate(order_event.payload)
             return api_delivery_hanlder(payload)
-        case _:
+        case OrderEventType.ORDER_CONFIRMED:
             logger.info(order_event.model_dump_json())
+            return
+        case _:
             return
 
 

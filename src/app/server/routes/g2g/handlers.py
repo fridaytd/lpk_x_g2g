@@ -13,6 +13,8 @@ def api_delivery_hanlder(
     payload: APIDeliveryPayload,
 ):
     logger.info(payload.model_dump_json())
+    LogToSheet.write_log(payload.model_dump_json())
+
     if (
         payload.delivery_summary.delivery_method_code
         is DeliveryMethodCode.DIRECT_TOP_UP
@@ -91,7 +93,5 @@ def api_delivery_hanlder(
             res = lpk_api_client.create_order(order_payload)
 
             logger.info(res.model_dump_json())
-
-        # LogToSheet.write_log(payload.model_dump_json())
 
     return {"message": "ok"}

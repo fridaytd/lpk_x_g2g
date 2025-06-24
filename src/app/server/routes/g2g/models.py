@@ -98,7 +98,7 @@ class APIDeliveryPayload(BaseModel):
 
 
 class OrderEvent(BaseModel):
-    id: str
-    event_happened_at: int
+    id: str | None = None
+    event_happened_at: int | None = None
     event_type: OrderEventType
     payload: dict

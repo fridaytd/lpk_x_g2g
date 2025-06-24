@@ -27,3 +27,14 @@ async def webhook(order_event: OrderEvent, _: VerifySignatureDep):
         case _:
             logger.info(order_event.model_dump_json())
             return
+
+
+# @router.post("")
+# async def webhook(order_event: OrderEvent):
+#     match order_event.event_type:
+#         case OrderEventType.ORDER_API_DELIVERY:
+#             payload = APIDeliveryPayload.model_validate(order_event.payload)
+#             return api_delivery_hanlder(payload)
+#         case _:
+#             logger.info(order_event.model_dump_json())
+#             return

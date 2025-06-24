@@ -22,6 +22,7 @@ from .models import (
     Order,
     PatchDeliveryPayload,
     PathchDeliveryResponse,
+    GetOfferResponse,
 )
 from .exceptions import G2GAPIError
 from ..shared.decorators import retry_on_fail
@@ -149,8 +150,8 @@ class G2GAPIClient:
     def get_offer(
         self,
         offer_id: str,
-    ):
-        canonical_url = f"/{G2G_API_VERSION}/offers/{offer_id}"
+    ) -> ResponseModel[GetOfferResponse]:
+        canonical_url = f"/v1/offers/{offer_id}"
         headers = self.generate_authorization_header(canonical_url)
 
         res = self.http_client.get(
@@ -164,7 +165,7 @@ class G2GAPIClient:
             logger.error(res.text)
             raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
-        return res.json()
+        return ResponseModel[GetOfferResponse].model_validate(res.json())
 
     # @retry_on_fail(max_retries=3, sleep_interval=2)
     def create_offer(

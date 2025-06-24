@@ -189,6 +189,31 @@ class DeleteOfferResponse(BaseModel):
     success: bool
 
 
+class GetOfferResponse(BaseModel):
+    offer_id: str
+    seller_id: str
+    offer_type: str
+    delivery_type: list[Literal["direct_top_up", "instant_inventory"]]
+    product_id: str
+    service_id: str
+    brand_id: str
+    region_id: str
+    title: str
+    description: str
+    status: str
+    currency: str
+    unit_price: float
+    min_qty: int
+    available_qty: int
+    api_qty: int
+    low_stock_alert_qty: int
+    offer_attributes: list[OfferAttribute]
+    wholesale_details: list[dict]
+    sales_territory_settings: dict
+    created_at: int
+    updated_at: int
+
+
 #############
 #
 #   ORDERS

@@ -4,7 +4,13 @@ import httpx
 
 from .. import config
 from . import logger
-from .models import ProductResponse, Response, CategoryResponse
+from .models import (
+    ProductResponse,
+    Response,
+    CategoryResponse,
+    OrderPayload,
+    CreatedOrderResposne,
+)
 from ..shared.decorators import retry_on_fail
 
 LPK_BASE_URL: Final[str] = "https://www.lapakgaming.com"
@@ -81,6 +87,29 @@ class LpkAPIClient:
             res.raise_for_status()
 
         return Response[ProductResponse].model_validate(res.json())
+
+    @retry_on_fail()
+    def create_order(self, order: OrderPayload) -> CreatedOrderResposne:
+        logger.info("API Create order")
+
+        headers = {
+            "Authorization": f"Bearer {config.LAPAK_API_KEY}",
+        }
+
+        res = self.client.post(
+            f"{self.base_url}/api/order",
+            headers=headers,
+            json=order.model_dump(mode="json"),
+        )
+
+        try:
+            res.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.exception(e)
+            logger.info(res.text)
+            res.raise_for_status()
+
+        return CreatedOrderResposne.model_validate(res.json())
 
 
 lpk_api_client = LpkAPIClient()

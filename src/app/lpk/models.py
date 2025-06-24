@@ -54,3 +54,22 @@ class Category(BaseModel):
 
 class CategoryResponse(BaseModel):
     categories: list[Category]
+
+
+class OrderPayload(BaseModel):
+    user_id: str | None = None
+    additional_id: str | None = None
+    additional_information: str | None = None
+    orderdetail: str | None = None
+    count_order: int
+    product_code: str
+
+
+class CreatedOrderResposneData(BaseModel):
+    tid: str | None = None
+    total_price: int | None = None
+
+
+class CreatedOrderResposne(BaseModel):
+    code: str
+    data: CreatedOrderResposneData | None

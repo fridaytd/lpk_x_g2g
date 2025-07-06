@@ -90,8 +90,8 @@ def api_delivery_hanlder(
                 }
             )
             logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-            # res = lpk_api_client.create_order(order_payload)
+            res = lpk_api_client.create_order(order_payload)
 
-            # logger.info(res.model_dump_json())
+            logger.info(res.model_dump_json())
 
     return {"message": "ok"}

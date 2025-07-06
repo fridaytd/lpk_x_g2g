@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from typing import Optional
+
 from .enums import (
     OrderStatus,
     OrderPaymentStatus,
@@ -66,10 +68,10 @@ class ConfirmedOrderPayload(BaseModel):
 class AttributeItem(BaseModel):
     attribute_group_id: str
     attribute_group_name: str
-    attribute_id: str
-    attribute_key: str
-    attribute_value: str
-    value: str
+    attribute_id: Optional[str]
+    attribute_key: Optional[str]
+    attribute_value: Optional[str]
+    value: Optional[str]
 
 
 class DeliverySummary(BaseModel):

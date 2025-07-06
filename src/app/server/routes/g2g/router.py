@@ -22,6 +22,7 @@ async def hello_from_g2g() -> str:
 async def webhook(order_event: OrderEvent, _: VerifySignatureDep):
     match order_event.event_type:
         case OrderEventType.ORDER_API_DELIVERY:
+            logger.info(order_event)
             payload = APIDeliveryPayload.model_validate(order_event.payload)
             return api_delivery_hanlder(payload)
         case OrderEventType.ORDER_CONFIRMED:

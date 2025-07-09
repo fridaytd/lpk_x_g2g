@@ -15,3 +15,7 @@ wheels/
 
 # Keys
 keys.json
+
+# Store data
+**/data/store/*
+!**/data/store/.gitkeep

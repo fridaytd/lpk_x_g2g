@@ -66,10 +66,34 @@ class OrderPayload(BaseModel):
 
 
 class CreatedOrderResposneData(BaseModel):
-    tid: str | None = None
+    tid: str
     total_price: int | None = None
 
 
 class CreatedOrderResposne(BaseModel):
     code: str
     data: CreatedOrderResposneData | None
+
+
+class Transaction(BaseModel):
+    id: str
+    status: str
+
+
+class OrderStatusData(BaseModel):
+    status: str
+    tid: str
+    transactions: list[Transaction]
+
+
+class OrderStatusResponse(BaseModel):
+    code: str
+    data: OrderStatusData
+
+
+class FXRateReponse(BaseModel):
+    from_currency: str
+    to_currency: str
+    buy_rate: float
+    sell_rate: float
+    created_date: str

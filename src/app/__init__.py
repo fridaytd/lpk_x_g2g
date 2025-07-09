@@ -1,6 +1,9 @@
 import logging
 
-from .__config import Config
+from .shared.config import Config
+from .shared.stores import ModelKeyValueStore
+from .paths import SRC_PATH
+from .shared.models import StoreModel
 
 ## Seting logger
 # Configure logging once at the application level
@@ -16,5 +19,11 @@ logger = logging.getLogger(__name__)
 
 config = Config.from_env()
 
+kv_store = ModelKeyValueStore(
+    name="order_mapping",
+    save_dir=SRC_PATH / "data" / "store",
+    model=StoreModel,
+)
 
-__all__ = ["config", "logger"]
+
+__all__ = ["config", "logger", "kv_store"]

@@ -209,7 +209,10 @@ class GetOfferResponse(BaseModel):
     low_stock_alert_qty: int
     offer_attributes: list[OfferAttribute]
     wholesale_details: list[dict]
+    delivery_method_ids: list[str]
+    delivery_speed: str | None = None
     sales_territory_settings: dict
+    code_label: str
     created_at: int
     updated_at: int
 
@@ -243,16 +246,22 @@ class PatchDeliveryPayload(BaseModel):
     delivered_qty: int
     delivery_issue: Optional[
         Literal["incorrect_delivery_detail", "insufficient_stock", "others"]
-    ]
+    ] = None
     delivered_at: int
-    reference_id: Optional[str]
+    reference_id: Optional[str] = None
 
 
 class PathchDeliveryResponse(BaseModel):
-    delivery_id: str
-    delivered_qty: int
+    delivery_id: str | None = None
+    delivered_qty: int | None = None
     delivery_issue: Optional[
         Literal["incorrect_delivery_detail", "insufficient_stock", "others"]
-    ]
-    delivered_at: int
-    reference_id: Optional[str]
+    ] = None
+    delivered_at: int | None = None
+    reference_id: Optional[str] = None
+
+
+class DeliveryCode(BaseModel):
+    content: str
+    content_type: str = "text/plain"
+    reference_id: str

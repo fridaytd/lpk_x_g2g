@@ -1,19 +1,27 @@
+from fastapi import BackgroundTasks
+
 from .models import APIDeliveryPayload
 from .enums import DeliveryMethodCode
 from ....sheet.models import LogToSheet
 from . import logger
 
+from ...background_tasks import check_lpk_order_status_cron_job
+
 from app.g2g.api_client import g2g_api_client
 from app.lpk.api_client import lpk_api_client
 from app.shared.utils import load_product_mapping, load_delivery_method_list_mapping
 from app.lpk.models import OrderPayload
+from app.shared.models import StoreModel
+
+from app import kv_store
 
 
 def api_delivery_hanlder(
     payload: APIDeliveryPayload,
+    background_tasks: BackgroundTasks,
 ):
-    logger.info(payload.model_dump_json())
-    LogToSheet.write_log(payload.model_dump_json())
+    # logger.info(payload.model_dump_json())
+    # LogToSheet.write_log(payload.model_dump_json())
 
     if (
         payload.delivery_summary.delivery_method_code
@@ -24,14 +32,15 @@ def api_delivery_hanlder(
         delivery_method_list_mapping = load_delivery_method_list_mapping()
 
         offer = g2g_api_client.get_offer(payload.offer_id).payload
-
-        logger.info(offer.model_dump_json())
+        logger.info(f"Offer ID: {offer.offer_id} | Title: {offer.title}")
+        log_message: str = f"Offer ID: {offer.offer_id} | Title: {offer.title}\n"
 
         if (
             offer.product_id in product_mapping
             and offer.product_id in delivery_method_list_mapping
         ):
             logger.info(f"Supported product id: {offer.product_id}")
+            log_message += f"Supported product id: {offer.product_id}\n"
 
             valided_lpk_product_codes_str: str | None = None
             user_id: str | None = None
@@ -46,6 +55,7 @@ def api_delivery_hanlder(
                     logger.info(
                         f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}"
                     )
+                    log_message += f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}"
                     valided_lpk_product_codes_str = product_mapping[offer.product_id][
                         attribute.attribute_group_id
                     ][attribute.attribute_id]
@@ -82,7 +92,7 @@ def api_delivery_hanlder(
             order_payload = OrderPayload.model_validate(
                 {
                     "user_id": user_id,
-                    "addtional_id": additional_id,
+                    "additional_id": additional_id,
                     "count_order": payload.purchased_qty,
                     "product_code": valided_lpk_product_codes_str.split(",")[0]
                     if valided_lpk_product_codes_str
@@ -90,8 +100,19 @@ def api_delivery_hanlder(
                 }
             )
             logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-            res = lpk_api_client.create_order(order_payload)
+            lpk_create_order_res = lpk_api_client.create_order(order_payload)
 
-            logger.info(res.model_dump_json())
+            if lpk_create_order_res.data:
+                kv_store.set(
+                    lpk_create_order_res.data.tid,
+                    StoreModel(
+                        order_id=payload.order_id,
+                        delivery_id=payload.delivery_summary.delivery_id,
+                        quantity=order_payload.count_order,
+                    ),
+                )
+                background_tasks.add_task(
+                    check_lpk_order_status_cron_job, lpk_create_order_res.data.tid
+                )
 
     return {"message": "ok"}

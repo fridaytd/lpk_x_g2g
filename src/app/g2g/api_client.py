@@ -23,6 +23,7 @@ from .models import (
     PatchDeliveryPayload,
     PathchDeliveryResponse,
     GetOfferResponse,
+    DeliveryCode,
 )
 from .exceptions import G2GAPIError
 from ..shared.decorators import retry_on_fail
@@ -151,7 +152,7 @@ class G2GAPIClient:
         self,
         offer_id: str,
     ) -> ResponseModel[GetOfferResponse]:
-        canonical_url = f"/v1/offers/{offer_id}"
+        canonical_url = f"/v2/offers/{offer_id}"
         headers = self.generate_authorization_header(canonical_url)
 
         res = self.http_client.get(
@@ -179,7 +180,7 @@ class G2GAPIClient:
         res = self.http_client.post(
             canonical_url,
             headers=cast(dict[str, str], headers),
-            data=create_offer_request.model_dump(mode="json"),
+            json=create_offer_request.model_dump(mode="json"),
         )
         try:
             res.raise_for_status()
@@ -201,7 +202,7 @@ class G2GAPIClient:
         res = self.http_client.patch(
             canonical_url,
             headers=cast(dict[str, str], headers),
-            data=update_offer_request.model_dump(mode="json"),
+            json=update_offer_request.model_dump(mode="json"),
         )
         try:
             res.raise_for_status()
@@ -239,7 +240,7 @@ class G2GAPIClient:
         res = self.http_client.post(
             canonical_url,
             headers=cast(dict[str, str], headers),
-            data=payload,
+            json=payload,
         )
         try:
             res.raise_for_status()
@@ -269,6 +270,26 @@ class G2GAPIClient:
         return ResponseModel[Order].model_validate(res.json())
 
     @retry_on_fail(max_retries=3, sleep_interval=2)
+    def get_order_deliveries(
+        self,
+        order_id: str,
+    ) -> dict:
+        canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}/delivery"
+        headers = self.generate_authorization_header(canonical_url)
+        res = self.http_client.get(
+            canonical_url,
+            headers=cast(dict[str, str], headers),
+        )
+
+        try:
+            res.raise_for_status()
+        except HTTPStatusError:
+            logger.exception(res.text)
+            raise G2GAPIError(status_code=res.status_code, detail=res.text)
+
+        return res.json()
+
+    @retry_on_fail(max_retries=3, sleep_interval=2)
     def patch_delivery_order(
         self,
         order_id: str,
@@ -277,10 +298,11 @@ class G2GAPIClient:
     ) -> ResponseModel[PathchDeliveryResponse]:
         canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}/delivery/{delivery_id}"
         headers = self.generate_authorization_header(canonical_url)
+        print(payload.model_dump_json())
         res = self.http_client.patch(
             canonical_url,
             headers=cast(dict[str, str], headers),
-            data=payload.model_dump(mode="json"),
+            json=payload.model_dump(mode="json"),
         )
         try:
             res.raise_for_status()
@@ -288,7 +310,34 @@ class G2GAPIClient:
             logger.exception(res.text)
             raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
-        return ResponseModel[PathchDeliveryResponse].model_validate(res.json)
+        return ResponseModel[PathchDeliveryResponse].model_validate(res.json())
+
+    @retry_on_fail(max_retries=3, sleep_interval=2)
+    def delivery_order_codes(
+        self,
+        order_id: str,
+        delivery_id: str,
+        codes: list[DeliveryCode],
+    ) -> ResponseModel[PathchDeliveryResponse]:
+        canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}/delivery"
+        headers = self.generate_authorization_header(canonical_url)
+
+        payload = {
+            "delivery_id": delivery_id,
+            "codes": [code.model_dump(mode="json") for code in codes],
+        }
+        res = self.http_client.post(
+            canonical_url,
+            headers=cast(dict[str, str], headers),
+            json=payload,
+        )
+        try:
+            res.raise_for_status()
+        except HTTPStatusError:
+            logger.exception(res.text)
+            raise G2GAPIError(status_code=res.status_code, detail=res.text)
+
+        return ResponseModel[PathchDeliveryResponse].model_validate(res.json())
 
 
 g2g_api_client = G2GAPIClient()

@@ -1,7 +1,16 @@
-from fastapi import APIRouter
+from datetime import datetime
+
+from fastapi import APIRouter, BackgroundTasks
 
 from .models import ProductCallbackPayload, OrderCallbackPayload
 from . import logger
+from .utiles import is_success_order
+from ...background_tasks import check_lpk_order_status_cron_job
+
+from app import kv_store
+from app.shared.models import StoreModel
+from app.g2g.models import PatchDeliveryPayload
+from app.g2g.api_client import g2g_api_client
 
 router = APIRouter(
     prefix="/lpk",
@@ -20,8 +29,30 @@ async def product_callback(payload: ProductCallbackPayload) -> dict:
 
 
 @router.post("/order")
-async def order_callback(payload: OrderCallbackPayload) -> dict:
-    logger.info(payload.model_dump_json())
+async def order_callback(
+    payload: OrderCallbackPayload, background_tasks: BackgroundTasks
+) -> dict:
+    tid = payload.data.tid
+    mapped_order: StoreModel | None = kv_store.get(tid)
+    if mapped_order is None:
+        return {
+            "message": "SUCCESS",
+        }
+    if is_success_order(payload):
+        g2g_api_client.patch_delivery_order(
+            order_id=mapped_order.order_id,
+            delivery_id=mapped_order.delivery_id,
+            payload=PatchDeliveryPayload(
+                delivered_qty=mapped_order.quantity,
+                delivered_at=int(
+                    datetime.now().timestamp(),
+                ),
+            ),
+        )
+        kv_store.delete(tid)
+    else:
+        background_tasks.add_task(check_lpk_order_status_cron_job, tid)
+
     return {
         "message": "SUCCESS",
     }

@@ -110,49 +110,37 @@ def api_delivery_hanlder(
                 )
                 log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
 
-                if idr_g2g_offer_price > min_lpk_product.price:
-                    logger.info("Ready to delivery")
-                    log_message += "Realy to delivery\n"
-                    order_payload = OrderPayload.model_validate(
-                        {
-                            "user_id": user_id,
-                            "additional_id": additional_id,
-                            "count_order": payload.purchased_qty,
-                            "product_code": min_lpk_product.code,
-                        }
+                order_payload = OrderPayload.model_validate(
+                    {
+                        "user_id": user_id,
+                        "additional_id": additional_id,
+                        "count_order": payload.purchased_qty,
+                        "product_code": min_lpk_product.code,
+                    }
+                )
+                logger.info(f"""Payload: {order_payload.model_dump_json()}""")
+                try:
+                    lpk_create_order_res = lpk_api_client.create_order(order_payload)
+                except Exception:
+                    logger.info("Fail to create lpk_offer")
+                    log_message += "Fail to create lpk_offer\n"
+
+                if lpk_create_order_res.data:
+                    kv_store.set(
+                        lpk_create_order_res.data.tid,
+                        StoreModel(
+                            order_id=payload.order_id,
+                            delivery_id=payload.delivery_summary.delivery_id,
+                            quantity=order_payload.count_order,
+                        ),
                     )
-                    logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-                    try:
-                        lpk_create_order_res = lpk_api_client.create_order(
-                            order_payload
-                        )
-                    except Exception:
-                        logger.info("Fail to create lpk_offer")
-                        log_message += "Fail to create lpk_offer\n"
-
-                    if lpk_create_order_res.data:
-                        kv_store.set(
-                            lpk_create_order_res.data.tid,
-                            StoreModel(
-                                order_id=payload.order_id,
-                                delivery_id=payload.delivery_summary.delivery_id,
-                                quantity=order_payload.count_order,
-                            ),
-                        )
-                        background_tasks.add_task(
-                            check_lpk_order_status_cron_job,
-                            lpk_create_order_res.data.tid,
-                        )
-                    else:
-                        logger.info("Fail to create lpk_offer")
-                        log_message += "Fail to create lpk_offer\n"
-
+                    background_tasks.add_task(
+                        check_lpk_order_status_cron_job,
+                        lpk_create_order_res.data.tid,
+                    )
                 else:
-                    logger.info(
-                        "Fail to delivery because G2G's price higher than Lapakgaming"
-                    )
-                    log_message += (
-                        "Fail to delivery because G2G's price higher than Lapakgaming\n"
-                    )
+                    logger.info("Fail to create lpk_offer")
+                    log_message += "Fail to create lpk_offer\n"
+
         LogToSheet.write_log(log_message)
     return {"message": "ok"}

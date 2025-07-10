@@ -209,8 +209,6 @@ class GetOfferResponse(BaseModel):
     low_stock_alert_qty: int
     offer_attributes: list[OfferAttribute]
     wholesale_details: list[dict]
-    delivery_method_ids: list[str]
-    delivery_speed: str | None = None
     sales_territory_settings: dict
     code_label: str
     created_at: int

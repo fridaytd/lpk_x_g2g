@@ -152,7 +152,7 @@ class G2GAPIClient:
         self,
         offer_id: str,
     ) -> ResponseModel[GetOfferResponse]:
-        canonical_url = f"/v2/offers/{offer_id}"
+        canonical_url = f"/v1/offers/{offer_id}"
         headers = self.generate_authorization_header(canonical_url)
 
         res = self.http_client.get(

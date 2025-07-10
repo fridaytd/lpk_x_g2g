@@ -9,6 +9,7 @@ from ...background_tasks import check_lpk_order_status_cron_job
 
 from app.g2g.api_client import g2g_api_client
 from app.lpk.api_client import lpk_api_client
+from app.lpk.utils import get_lowest_price_from_list_code
 from app.shared.utils import load_product_mapping, load_delivery_method_list_mapping
 from app.lpk.models import OrderPayload
 from app.shared.models import StoreModel
@@ -20,9 +21,7 @@ def api_delivery_hanlder(
     payload: APIDeliveryPayload,
     background_tasks: BackgroundTasks,
 ):
-    # logger.info(payload.model_dump_json())
-    # LogToSheet.write_log(payload.model_dump_json())
-
+    # Check if delivery method code is DIRECT TOP UP
     if (
         payload.delivery_summary.delivery_method_code
         is DeliveryMethodCode.DIRECT_TOP_UP
@@ -31,10 +30,12 @@ def api_delivery_hanlder(
         product_mapping = load_product_mapping()
         delivery_method_list_mapping = load_delivery_method_list_mapping()
 
+        # Get offer by offer id
         offer = g2g_api_client.get_offer(payload.offer_id).payload
         logger.info(f"Offer ID: {offer.offer_id} | Title: {offer.title}")
         log_message: str = f"Offer ID: {offer.offer_id} | Title: {offer.title}\n"
 
+        # Mapping G2G product with Lapak
         if (
             offer.product_id in product_mapping
             and offer.product_id in delivery_method_list_mapping
@@ -55,7 +56,7 @@ def api_delivery_hanlder(
                     logger.info(
                         f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}"
                     )
-                    log_message += f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}"
+                    log_message += f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}\n"
                     valided_lpk_product_codes_str = product_mapping[offer.product_id][
                         attribute.attribute_group_id
                     ][attribute.attribute_id]
@@ -69,6 +70,7 @@ def api_delivery_hanlder(
                     logger.info(
                         f"User id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}"
                     )
+                    log_message += f"User id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}\n"
                     user_id = (
                         delivery_method_list.attribute_value
                         if delivery_method_list.attribute_value
@@ -83,36 +85,74 @@ def api_delivery_hanlder(
                     logger.info(
                         f"Additional id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}"
                     )
+                    log_message += f"Additional id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}\n"
                     additional_id = (
                         delivery_method_list.attribute_value
                         if delivery_method_list.attribute_value
                         else delivery_method_list.value
                     )
 
-            order_payload = OrderPayload.model_validate(
-                {
-                    "user_id": user_id,
-                    "additional_id": additional_id,
-                    "count_order": payload.purchased_qty,
-                    "product_code": valided_lpk_product_codes_str.split(",")[0]
-                    if valided_lpk_product_codes_str
-                    else "",
-                }
-            )
-            logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-            lpk_create_order_res = lpk_api_client.create_order(order_payload)
-
-            if lpk_create_order_res.data:
-                kv_store.set(
-                    lpk_create_order_res.data.tid,
-                    StoreModel(
-                        order_id=payload.order_id,
-                        delivery_id=payload.delivery_summary.delivery_id,
-                        quantity=order_payload.count_order,
-                    ),
-                )
-                background_tasks.add_task(
-                    check_lpk_order_status_cron_job, lpk_create_order_res.data.tid
+            # Find the lowest lapak product
+            if valided_lpk_product_codes_str:
+                min_lpk_product = get_lowest_price_from_list_code(
+                    [code.strip() for code in valided_lpk_product_codes_str.split(",")]
                 )
 
+                logger.info(f"Lowest product: {min_lpk_product.model_dump_json()}")
+                log_message += f"Lowest product: {min_lpk_product.model_dump_json()}\n"
+
+                # Only delivery when g2g offer price < lapak product price
+                fx_rate = lpk_api_client.get_fx_rate()
+
+                idr_g2g_offer_price = offer.unit_price * fx_rate.data.buy_rate
+                logger.info(
+                    f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}"
+                )
+                log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
+
+                if idr_g2g_offer_price < min_lpk_product.price:
+                    logger.info("Ready to delivery")
+                    log_message += "Realy to delivery\n"
+                    order_payload = OrderPayload.model_validate(
+                        {
+                            "user_id": user_id,
+                            "additional_id": additional_id,
+                            "count_order": payload.purchased_qty,
+                            "product_code": min_lpk_product.code,
+                        }
+                    )
+                    logger.info(f"""Payload: {order_payload.model_dump_json()}""")
+                    try:
+                        lpk_create_order_res = lpk_api_client.create_order(
+                            order_payload
+                        )
+                    except Exception:
+                        logger.info("Fail to create lpk_offer")
+                        log_message += "Fail to create lpk_offer\n"
+
+                    if lpk_create_order_res.data:
+                        kv_store.set(
+                            lpk_create_order_res.data.tid,
+                            StoreModel(
+                                order_id=payload.order_id,
+                                delivery_id=payload.delivery_summary.delivery_id,
+                                quantity=order_payload.count_order,
+                            ),
+                        )
+                        background_tasks.add_task(
+                            check_lpk_order_status_cron_job,
+                            lpk_create_order_res.data.tid,
+                        )
+                    else:
+                        logger.info("Fail to create lpk_offer")
+                        log_message += "Fail to create lpk_offer\n"
+
+                else:
+                    logger.info(
+                        "Fail to delivery because G2G's price higher than Lapakgaming"
+                    )
+                    log_message += (
+                        "Fail to delivery because G2G's price higher than Lapakgaming\n"
+                    )
+        LogToSheet.write_log(log_message)
     return {"message": "ok"}

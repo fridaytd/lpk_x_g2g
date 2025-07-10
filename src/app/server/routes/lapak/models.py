@@ -17,9 +17,7 @@ class ProductCallbackPayload(BaseModel):
 class Transaction(BaseModel):
     id: str  # The id of the order
     product_name: str  # The name of the product
-    note: str  # The notes of the transaction fulfillment
     status: str  # The status of the order
-    voucher_code: str  # The value of voucher code, if the product is voucher. Otherwise it will be empty
 
 
 class OrderCallbackData(BaseModel):

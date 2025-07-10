@@ -11,6 +11,7 @@ from app import kv_store
 from app.shared.models import StoreModel
 from app.g2g.models import PatchDeliveryPayload
 from app.g2g.api_client import g2g_api_client
+from app.sheet.models import LogToSheet
 
 router = APIRouter(
     prefix="/lpk",
@@ -49,6 +50,7 @@ async def order_callback(
                 ),
             ),
         )
+        LogToSheet.write_log(f"Delivery success for order id: {mapped_order.order_id}")
         kv_store.delete(tid)
     else:
         background_tasks.add_task(check_lpk_order_status_cron_job, tid)

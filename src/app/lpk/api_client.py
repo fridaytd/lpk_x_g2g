@@ -92,6 +92,9 @@ class LpkAPIClient:
 
     @retry_on_fail()
     def create_order(self, order: OrderPayload) -> CreatedOrderResposne:
+        # return CreatedOrderResposne.model_validate(
+        #     {"code": "SUCCESS", "data": {"tid": "test_tid", "total_price": 1}}
+        # )
         logger.info("API Create order")
 
         headers = {
@@ -121,7 +124,7 @@ class LpkAPIClient:
             "Authorization": f"Bearer {config.LAPAK_API_KEY}",
         }
 
-        res = self.client.post(
+        res = self.client.get(
             f"{self.base_url}/api/order_status?tid={tid}",
             headers=headers,
         )
@@ -137,7 +140,7 @@ class LpkAPIClient:
 
     @retry_on_fail()
     def get_fx_rate(
-        self, from_currency: str = "IDR", to_currency: str = "USD"
+        self, from_currency: str = "USD", to_currency: str = "IDR"
     ) -> Response[FXRateReponse]:
         logger.info("API Get FX Rate Response")
 

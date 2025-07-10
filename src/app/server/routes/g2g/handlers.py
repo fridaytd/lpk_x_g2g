@@ -98,49 +98,59 @@ def api_delivery_hanlder(
                     [code.strip() for code in valided_lpk_product_codes_str.split(",")]
                 )
 
-                logger.info(f"Lowest product: {min_lpk_product.model_dump_json()}")
-                log_message += f"Lowest product: {min_lpk_product.model_dump_json()}\n"
-
-                # Only delivery when g2g offer price < lapak product price
-                fx_rate = lpk_api_client.get_fx_rate()
-
-                idr_g2g_offer_price = offer.unit_price * fx_rate.data.buy_rate
-                logger.info(
-                    f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}"
-                )
-                log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
-
-                order_payload = OrderPayload.model_validate(
-                    {
-                        "user_id": user_id,
-                        "additional_id": additional_id,
-                        "count_order": payload.purchased_qty,
-                        "product_code": min_lpk_product.code,
-                    }
-                )
-                logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-                try:
-                    lpk_create_order_res = lpk_api_client.create_order(order_payload)
-                except Exception:
-                    logger.info("Fail to create lpk_offer")
-                    log_message += "Fail to create lpk_offer\n"
-
-                if lpk_create_order_res.data:
-                    kv_store.set(
-                        lpk_create_order_res.data.tid,
-                        StoreModel(
-                            order_id=payload.order_id,
-                            delivery_id=payload.delivery_summary.delivery_id,
-                            quantity=order_payload.count_order,
-                        ),
+                if min_lpk_product:
+                    logger.info(f"Lowest product: {min_lpk_product.model_dump_json()}")
+                    log_message += (
+                        f"Lowest product: {min_lpk_product.model_dump_json()}\n"
                     )
-                    background_tasks.add_task(
-                        check_lpk_order_status_cron_job,
-                        lpk_create_order_res.data.tid,
+
+                    # Only delivery when g2g offer price < lapak product price
+                    fx_rate = lpk_api_client.get_fx_rate()
+
+                    idr_g2g_offer_price = offer.unit_price * fx_rate.data.buy_rate
+                    logger.info(
+                        f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}"
                     )
+                    log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
+
+                    order_payload = OrderPayload.model_validate(
+                        {
+                            "user_id": user_id,
+                            "additional_id": additional_id,
+                            "count_order": payload.purchased_qty,
+                            "product_code": min_lpk_product.code,
+                        }
+                    )
+                    logger.info(f"""Payload: {order_payload.model_dump_json()}""")
+                    try:
+                        lpk_create_order_res = lpk_api_client.create_order(
+                            order_payload
+                        )
+                    except Exception as e:
+                        logger.exception(e)
+                        logger.info("Fail to create lpk_offer")
+                        log_message += "Fail to create lpk_offer\n"
+
+                    if lpk_create_order_res.data:
+                        kv_store.set(
+                            lpk_create_order_res.data.tid,
+                            StoreModel(
+                                order_id=payload.order_id,
+                                delivery_id=payload.delivery_summary.delivery_id,
+                                quantity=order_payload.count_order,
+                            ),
+                        )
+                        background_tasks.add_task(
+                            check_lpk_order_status_cron_job,
+                            lpk_create_order_res.data.tid,
+                        )
+                    else:
+                        logger.info("Fail to create lpk_offer")
+                        log_message += "Fail to create lpk_offer\n"
+
                 else:
-                    logger.info("Fail to create lpk_offer")
-                    log_message += "Fail to create lpk_offer\n"
+                    logger.info("Product in lapak is not available")
+                    log_message += "Product in lapak is not available"
 
         LogToSheet.write_log(log_message)
     return {"message": "ok"}

@@ -110,7 +110,7 @@ def api_delivery_hanlder(
                 )
                 log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
 
-                if idr_g2g_offer_price < min_lpk_product.price:
+                if idr_g2g_offer_price > min_lpk_product.price:
                     logger.info("Ready to delivery")
                     log_message += "Realy to delivery\n"
                     order_payload = OrderPayload.model_validate(

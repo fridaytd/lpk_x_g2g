@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import BackgroundTasks
 
 from .models import APIDeliveryPayload
@@ -15,6 +17,31 @@ from app.lpk.models import OrderPayload
 from app.shared.models import StoreModel
 
 from app import kv_store
+
+
+def map_delivery_method_list(
+    payload: APIDeliveryPayload,
+    product_delivery_method_list_mapping: dict,
+    key: Literal["user_id", "additional_id"],
+) -> str | None:
+    for delivery_method_list in payload.delivery_summary.delivery_method_list:
+        if key in product_delivery_method_list_mapping:
+            _mapping = product_delivery_method_list_mapping[key]
+            if isinstance(_mapping, str):
+                if _mapping == delivery_method_list.attribute_group_id:
+                    if delivery_method_list.value:
+                        return delivery_method_list.value
+                    else:
+                        return delivery_method_list.attribute_value
+            elif isinstance(_mapping, dict):
+                if delivery_method_list.attribute_group_id in _mapping:
+                    _value_mapping = _mapping[delivery_method_list.attribute_group_id]
+                    if delivery_method_list.value in _value_mapping:
+                        return _value_mapping[delivery_method_list.value]
+                    elif delivery_method_list.attribute_value in _value_mapping:
+                        return _value_mapping[delivery_method_list.attribute_value]
+
+    return None
 
 
 def api_delivery_hanlder(
@@ -61,36 +88,27 @@ def api_delivery_hanlder(
                         attribute.attribute_group_id
                     ][attribute.attribute_id]
 
-            for delivery_method_list in payload.delivery_summary.delivery_method_list:
-                if (
-                    "user_id" in delivery_method_list_mapping[offer.product_id]
-                    and delivery_method_list_mapping[offer.product_id]["user_id"]
-                    == delivery_method_list.attribute_group_id
-                ):
-                    logger.info(
-                        f"User id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}"
-                    )
-                    log_message += f"User id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}\n"
-                    user_id = (
-                        delivery_method_list.attribute_value
-                        if delivery_method_list.attribute_value
-                        else delivery_method_list.value
-                    )
+            product_delivery_method_list_mapping = delivery_method_list_mapping[
+                offer.product_id
+            ]
 
-                if (
-                    "additional_id" in delivery_method_list_mapping[offer.product_id]
-                    and delivery_method_list_mapping[offer.product_id]["additional_id"]
-                    == delivery_method_list.attribute_group_id
-                ):
-                    logger.info(
-                        f"Additional id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}"
-                    )
-                    log_message += f"Additional id: {delivery_method_list.attribute_value if delivery_method_list.attribute_value else delivery_method_list.value}\n"
-                    additional_id = (
-                        delivery_method_list.attribute_value
-                        if delivery_method_list.attribute_value
-                        else delivery_method_list.value
-                    )
+            user_id = map_delivery_method_list(
+                payload=payload,
+                product_delivery_method_list_mapping=product_delivery_method_list_mapping,
+                key="user_id",
+            )
+
+            logger.info(f"User id: {user_id}")
+            log_message += f"User id: {user_id}\n"
+
+            additional_id = map_delivery_method_list(
+                payload=payload,
+                product_delivery_method_list_mapping=product_delivery_method_list_mapping,
+                key="additional_id",
+            )
+
+            logger.info(f"Additional id: {additional_id}")
+            log_message += f"UseAdditionalr id: {additional_id}\n"
 
             # Find the lowest lapak product
             if valided_lpk_product_codes_str:

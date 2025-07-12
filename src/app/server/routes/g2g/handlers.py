@@ -108,7 +108,7 @@ def api_delivery_hanlder(
             )
 
             logger.info(f"Additional id: {additional_id}")
-            log_message += f"UseAdditionalr id: {additional_id}\n"
+            log_message += f"Additional id: {additional_id}\n"
 
             # Find the lowest lapak product
             if valided_lpk_product_codes_str:

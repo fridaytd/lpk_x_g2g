@@ -20,7 +20,7 @@ LPK_BASE_URL: Final[str] = "https://www.lapakgaming.com"
 
 class LpkAPIClient:
     def __init__(self) -> None:
-        self.client = httpx.Client()
+        self.client = httpx.Client(timeout=60)
         self.base_url = LPK_BASE_URL
 
     @retry_on_fail()
@@ -113,7 +113,7 @@ class LpkAPIClient:
 
         return Response[ProductResponse].model_validate(res.json())
 
-    @retry_on_fail()
+    @retry_on_fail(max_retries=2, sleep_interval=5)
     def create_order(self, order: OrderPayload) -> CreatedOrderResposne:
         # return CreatedOrderResposne.model_validate(
         #     {"code": "SUCCESS", "data": {"tid": "test_tid", "total_price": 1}}

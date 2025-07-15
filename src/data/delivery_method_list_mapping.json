@@ -13,5 +13,28 @@
                 "TW, HK, MO": "TW_HK_MO"
             }
         }
+    },
+    "aa854b82-5fe3-4cbd-9eb7-475e5ce8e291": {
+        "user_id": "1e0be099",
+        "additional_id": "3d75455a"
+    },
+    "de4d0167-e609-4e63-aad6-8ac65a93dd0a": {
+        "user_id": "426d373c"
+    },
+    "45591a13-0968-4330-b02f-c9a97967c869": {
+        "user_id": "65e0c54f",
+        "additional_id": "893e498d"
+    },
+    "5839f2c7-acc3-4535-a88f-25df2be3b527": {
+        "user_id": "c6fe8fb9"
+    },
+    "351a1e02-de08-48b1-a991-1893afe4945a": {
+        "user_id": "1e0be099",
+        "additional_id": {
+            "DEFAULT_KEY": "Blood Strike"
+        }
+    },
+    "5dd8bc4e-b374-4cec-b3df-1806052b7450": {
+        "user_id": "1e0be099"
     }
 }

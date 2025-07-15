@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Final
 
 from fastapi import BackgroundTasks
 
@@ -18,6 +18,8 @@ from app.shared.models import StoreModel
 
 from app import kv_store
 
+DEFAULT_KEY: Final[str] = "DEFAULT_KEY"
+
 
 def map_delivery_method_list(
     payload: APIDeliveryPayload,
@@ -34,6 +36,8 @@ def map_delivery_method_list(
                     else:
                         return delivery_method_list.attribute_value
             elif isinstance(_mapping, dict):
+                if DEFAULT_KEY in _mapping:
+                    return _mapping[DEFAULT_KEY]
                 if delivery_method_list.attribute_group_id in _mapping:
                     _value_mapping = _mapping[delivery_method_list.attribute_group_id]
                     if delivery_method_list.value in _value_mapping:

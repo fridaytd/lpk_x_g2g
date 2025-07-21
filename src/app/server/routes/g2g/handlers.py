@@ -8,15 +8,16 @@ from ....sheet.models import LogToSheet
 from . import logger
 
 from ...background_tasks import check_lpk_order_status_cron_job
+from ...utils import load_product_mapping_from_sheet
 
 from app.g2g.api_client import g2g_api_client
 from app.lpk.api_client import lpk_api_client
 from app.lpk.utils import get_lowest_price_from_list_code
-from app.shared.utils import load_product_mapping, load_delivery_method_list_mapping
+from app.shared.utils import load_delivery_method_list_mapping
 from app.lpk.models import OrderPayload
 from app.shared.models import StoreModel
 
-from app import kv_store
+from app import kv_store, config
 
 DEFAULT_KEY: Final[str] = "DEFAULT_KEY"
 
@@ -58,7 +59,9 @@ def api_delivery_hanlder(
         is DeliveryMethodCode.DIRECT_TOP_UP
     ):
         logger.info("Handling Direct top up")
-        product_mapping = load_product_mapping()
+        product_mapping = load_product_mapping_from_sheet(
+            sheet_id=config.SHEET_ID, sheet_name=config.MAPPING_SHEET_NAME, start_row=2
+        )
         delivery_method_list_mapping = load_delivery_method_list_mapping()
 
         # Get offer by offer id

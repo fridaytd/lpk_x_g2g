@@ -21,6 +21,7 @@ from .enums import CheckType
 from .g_sheet import gsheet_client
 from .exceptions import SheetError
 from ..shared.utils import formated_datetime
+from .utils import col_index_to_a1
 
 T = TypeVar("T")
 
@@ -541,6 +542,46 @@ class G2GTopUpProduct(ColSheetModel):
             IS_UPDATE_META: True,
         },
     ] = None
+
+    @staticmethod
+    def get_all_from_sheet(
+        sheet_id: str,
+        sheet_name: str,
+        start_row: int,
+    ) -> list["G2GTopUpProduct"]:
+        g2g_top_up_products: list[G2GTopUpProduct] = []
+        worksheet = G2GTopUpProduct.get_worksheet(
+            sheet_id=sheet_id, sheet_name=sheet_name
+        )
+
+        all_cells = worksheet.get_all_cells()
+
+        _temp_product_dict: dict[str, dict] = {}
+
+        mapping_fields = G2GTopUpProduct.mapping_fields()
+        reversed_mapping_dict: dict = {v: k for k, v in mapping_fields.items()}
+
+        for cell in all_cells:
+            if cell.row >= start_row:
+                if str(cell.row) not in _temp_product_dict:
+                    _temp_product_dict[str(cell.row)] = {
+                        "index": cell.row,
+                        "sheet_id": sheet_id,
+                        "sheet_name": sheet_name,
+                    }
+                if col_index_to_a1(cell.col) in reversed_mapping_dict:
+                    _temp_product_dict[str(cell.row)][
+                        reversed_mapping_dict[col_index_to_a1(cell.col)]
+                    ] = cell.value
+
+        for _, value in _temp_product_dict.items():
+            try:
+                g2g_top_up_product = G2GTopUpProduct.model_validate(value)
+                g2g_top_up_products.append(g2g_top_up_product)
+            except ValidationError:
+                pass
+
+        return g2g_top_up_products
 
 
 class LPKProduct(ColSheetModel):

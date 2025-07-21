@@ -14,6 +14,7 @@ class Config(BaseModel):
     # Sheets
     SHEET_ID: str
     SHEET_NAME: str
+    MAPPING_SHEET_NAME: str
 
     # Log sheets
     LOG_SHEET_ID: str

@@ -7,17 +7,26 @@ from .enums import DeliveryMethodCode
 from ....sheet.models import LogToSheet
 from . import logger
 
-from ...background_tasks import check_lpk_order_status_cron_job
+from ...background_tasks import (
+    check_lpk_order_status_cron_job,
+    check_eli_order_status_cron_job,
+)
 from ...utils import load_product_mapping_from_sheet
 
 from app.g2g.api_client import g2g_api_client
+from app.g2g.models import GetOfferResponse
+from app.elite.api_client import elitedias_api_client
 from app.lpk.api_client import lpk_api_client
 from app.lpk.utils import get_lowest_price_from_list_code
-from app.shared.utils import load_delivery_method_list_mapping
+from app.shared.utils import (
+    load_delivery_method_list_mapping,
+    load_eli_delivery_method_list_mapping,
+    load_eli_product_mapping,
+)
 from app.lpk.models import OrderPayload
-from app.shared.models import StoreModel
+from app.shared.models import StoreModel, EliStoreModel
 
-from app import kv_store, config
+from app import kv_store, config, eli_kv_store
 
 DEFAULT_KEY: Final[str] = "DEFAULT_KEY"
 
@@ -49,7 +58,111 @@ def map_delivery_method_list(
     return None
 
 
-def api_delivery_hanlder(
+def map_eli_delivery_method_list(
+    payload: APIDeliveryPayload,
+    eli_product_delivery_method_list_mapping: dict,
+) -> dict | None:
+    for delivery_method_list in payload.delivery_summary.delivery_method_list:
+        for (
+            payload_key,
+            map_attribute_group_id,
+        ) in eli_product_delivery_method_list_mapping.items():
+            if delivery_method_list.attribute_group_id == map_attribute_group_id:
+                if delivery_method_list.value:
+                    return {payload_key: delivery_method_list.value}
+                else:
+                    return {payload_key: delivery_method_list.attribute_value}
+
+    return None
+
+
+async def eli_delivery(
+    payload: APIDeliveryPayload,
+    background_tasks: BackgroundTasks,
+    offer: GetOfferResponse,
+    eli_product_mappping: dict[str, dict[str, dict[str, dict[str, str]]]],
+    eli_delivery_method_list_mapping: dict[str, dict[str, str]],
+    log_message: str,
+):
+    logger.info(f"Supported product id: {offer.product_id}")
+    log_message += f"Supported product id: {offer.product_id}\n"
+
+    eli_topup_payload: dict = {}
+    for attribute in offer.offer_attributes:
+        if (
+            attribute.attribute_group_id in eli_product_mappping[offer.product_id]
+            and attribute.attribute_id
+            in eli_product_mappping[offer.product_id][attribute.attribute_group_id]
+        ):
+            eli_topup_payload.update(
+                eli_product_mappping[offer.product_id][attribute.attribute_group_id][
+                    attribute.attribute_id
+                ]
+            )
+            logger.info(f"Updated elitedias topup payload: {eli_topup_payload}")
+            log_message += f"Updated elitedias topup payload: {eli_topup_payload}\n"
+
+    map_eli_delivery_method_list_dict = map_eli_delivery_method_list(
+        payload=payload,
+        eli_product_delivery_method_list_mapping=eli_delivery_method_list_mapping[
+            offer.product_id
+        ],
+    )
+
+    if map_eli_delivery_method_list_dict:
+        eli_topup_payload.update(map_eli_delivery_method_list_dict)
+
+    logger.info(f"Updated elitedias topup payload: {eli_topup_payload}")
+    log_message += f"Updated elitedias topup payload: {eli_topup_payload}\n"
+
+    eli_order_ids: list[str] = []
+
+    retry_time: int = 0
+    while (
+        len(eli_order_ids) < payload.purchased_qty
+        and retry_time < 3 * payload.purchased_qty
+    ):
+        create_topup_res = await elitedias_api_client.create_topup(eli_topup_payload)
+        if create_topup_res.order_id is None or (
+            create_topup_res.status and "success" not in create_topup_res.status
+        ):
+            logger.info(
+                f"Failed to create Elitedias. Reason: {create_topup_res.message}"
+            )
+
+        else:
+            eli_order_ids.append(create_topup_res.order_id)
+
+        retry_time += 1
+
+    if len(eli_order_ids) == payload.purchased_qty:
+        eli_kv_store.set(
+            key=payload.order_id,
+            value=EliStoreModel(
+                g2g_order_id=payload.order_id,
+                eli_order_ids=eli_order_ids,
+                delivery_id=payload.delivery_summary.delivery_id,
+                quantity=payload.purchased_qty,
+            ),
+        )
+        background_tasks.add_task(check_eli_order_status_cron_job, payload.order_id)
+        logger.info(
+            f"Successfully create order to Elitedias with G2G order id: {payload.order_id}"
+        )
+        log_message += f"Successfully create order to Elitedias with G2G order id: {payload.order_id}\n"
+    else:
+        logger.info(
+            f"FAILED create order to Elitedias with G2G order id: {payload.order_id}"
+        )
+        log_message += (
+            f"FAILED create order to Elitedias with G2G order id: {payload.order_id}\n"
+        )
+
+    LogToSheet.write_log(log_message)
+    return {"message": "ok"}
+
+
+async def api_delivery_hanlder(
     payload: APIDeliveryPayload,
     background_tasks: BackgroundTasks,
 ):
@@ -59,15 +172,35 @@ def api_delivery_hanlder(
         is DeliveryMethodCode.DIRECT_TOP_UP
     ):
         logger.info("Handling Direct top up")
+
+        # Load mappping for G2G - Lapakgaming
         product_mapping = load_product_mapping_from_sheet(
             sheet_id=config.SHEET_ID, sheet_name=config.MAPPING_SHEET_NAME, start_row=2
         )
         delivery_method_list_mapping = load_delivery_method_list_mapping()
 
+        # Load mapping for G2G - Elitedias
+        eli_product_mapping = load_eli_product_mapping()
+        eli_delivery_method_list_mapping = load_eli_delivery_method_list_mapping()
+
         # Get offer by offer id
         offer = g2g_api_client.get_offer(payload.offer_id).payload
         logger.info(f"Offer ID: {offer.offer_id} | Title: {offer.title}")
         log_message: str = f"Offer ID: {offer.offer_id} | Title: {offer.title}\n"
+
+        # Handel delivery with Elitedias
+        if (
+            offer.product_id in eli_product_mapping
+            and offer.product_id in eli_delivery_method_list_mapping
+        ):
+            return await eli_delivery(
+                payload=payload,
+                background_tasks=background_tasks,
+                offer=offer,
+                eli_product_mappping=eli_product_mapping,
+                eli_delivery_method_list_mapping=eli_delivery_method_list_mapping,
+                log_message=log_message,
+            )
 
         # Mapping G2G product with Lapak
         if (

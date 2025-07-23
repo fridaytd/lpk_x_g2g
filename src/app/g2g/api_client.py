@@ -289,7 +289,7 @@ class G2GAPIClient:
 
         return res.json()
 
-    @retry_on_fail(max_retries=3, sleep_interval=2)
+    @retry_on_fail(max_retries=2, sleep_interval=2)
     def patch_delivery_order(
         self,
         order_id: str,

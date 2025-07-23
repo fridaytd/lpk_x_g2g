@@ -1,0 +1,30 @@
+{
+    "df8a08f7-666e-4b01-9a9c-c41d2b59424f": {
+        "ebc002ed": {
+            "9d5724a5": {
+                "game": "marvelrivals",
+                "denom": "11680"
+            },
+            "b42093e2": {
+                "game": "marvelrivals",
+                "denom": "5680"
+            },
+            "f5209ae1": {
+                "game": "marvelrivals",
+                "denom": "2180"
+            },
+            "b5e9baf3": {
+                "game": "marvelrivals",
+                "denom": "1000"
+            },
+            "dcbe5017": {
+                "game": "marvelrivals",
+                "denom": "500"
+            },
+            "73ae2ae5": {
+                "game": "marvelrivals",
+                "denom": "100"
+            }
+        }
+    }
+}

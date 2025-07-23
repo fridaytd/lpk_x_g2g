@@ -30,6 +30,11 @@ class Config(BaseModel):
     # Lapak API key
     LAPAK_API_KEY: str
 
+    # Plsbuy credentials
+    ALITEDIAS_API_KEY: str
+
+    ORIGIN: str = "sosanhsach.io"
+
     @staticmethod
     def from_env(dotenv_path: str = "settings.env") -> "Config":
         load_dotenv(dotenv_path)

@@ -1,4 +1,8 @@
+import asyncio
+
 import json
+from typing import Awaitable, Callable, TypeVar, ParamSpec
+
 
 import time
 from datetime import datetime
@@ -6,6 +10,9 @@ from datetime import datetime
 from app import logger
 
 from ..paths import DATA_PATH
+
+T_Rt = TypeVar("T_Rt")
+T_Pr = ParamSpec("T_Pr")
 
 
 def sleep_for(delay: float) -> None:
@@ -39,6 +46,34 @@ def load_delivery_method_list_mapping() -> dict:
         return json.load(f)
 
 
-def load_product_mapping() -> dict:
-    with open(DATA_PATH / "product_mapping.json") as f:
+def load_eli_delivery_method_list_mapping() -> dict:
+    with open(DATA_PATH / "eli_delivery_method_list_mapping.json") as f:
         return json.load(f)
+
+
+def load_eli_product_mapping() -> dict[str, dict[str, dict[str, dict[str, str]]]]:
+    with open(DATA_PATH / "eli_product_mapping.json") as f:
+        return json.load(f)
+
+
+def afunc_retry(
+    afunc: Callable[T_Pr, Awaitable[T_Rt]],
+    max_retry: int = 3,
+    sleep_interval: float = 1,
+) -> Callable[T_Pr, Awaitable[T_Rt]]:
+    async def wrapper(*args: T_Pr.args, **kwargs: T_Pr.kwargs) -> T_Rt:
+        retry_time: int = 0
+        while retry_time <= max_retry:
+            try:
+                return await afunc(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Retried: {retry_time} time(s). Error: {e}")
+                if retry_time == max_retry:
+                    raise e
+            finally:
+                retry_time += 1
+                await asyncio.sleep(sleep_interval)
+
+        raise
+
+    return wrapper

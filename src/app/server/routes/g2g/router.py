@@ -26,7 +26,7 @@ async def webhook(
         case OrderEventType.ORDER_API_DELIVERY:
             logger.info(order_event)
             payload = APIDeliveryPayload.model_validate(order_event.payload)
-            return api_delivery_hanlder(payload, background_tasks)
+            return await api_delivery_hanlder(payload, background_tasks)
         case _:
             return
 
@@ -37,6 +37,6 @@ async def webhook(
 #         case OrderEventType.ORDER_API_DELIVERY:
 #             logger.info(order_event)
 #             payload = APIDeliveryPayload.model_validate(order_event.payload)
-#             return api_delivery_hanlder(payload, background_tasks)
+#             return await api_delivery_hanlder(payload, background_tasks)
 #         case _:
 #             return

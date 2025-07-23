@@ -3,7 +3,7 @@ import logging
 from .shared.config import Config
 from .shared.stores import ModelKeyValueStore
 from .paths import SRC_PATH
-from .shared.models import StoreModel
+from .shared.models import StoreModel, EliStoreModel
 
 ## Seting logger
 # Configure logging once at the application level
@@ -25,5 +25,11 @@ kv_store = ModelKeyValueStore(
     model=StoreModel,
 )
 
+eli_kv_store = ModelKeyValueStore(
+    name="eli_order_mapping",
+    save_dir=SRC_PATH / "data" / "store",
+    model=EliStoreModel,
+)
 
-__all__ = ["config", "logger", "kv_store"]
+
+__all__ = ["config", "logger", "kv_store", "eli_kv_store"]

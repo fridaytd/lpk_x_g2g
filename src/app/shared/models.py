@@ -1,10 +1,11 @@
 from pydantic import BaseModel
 
 
-class StoreModel(BaseModel):
+class LpkStoreModel(BaseModel):
     order_id: str
     delivery_id: str
     quantity: int
+    log_index: int
 
 
 class EliStoreModel(BaseModel):
@@ -12,3 +13,4 @@ class EliStoreModel(BaseModel):
     eli_order_ids: list[str]
     delivery_id: str
     quantity: int
+    log_index: int

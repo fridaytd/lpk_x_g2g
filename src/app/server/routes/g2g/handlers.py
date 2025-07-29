@@ -1,110 +1,161 @@
-from typing import Literal, Final
+from typing import Final
 
 from fastapi import BackgroundTasks
 
 from .models import APIDeliveryPayload
 from .enums import DeliveryMethodCode
-from ....sheet.models import LogToSheet
-from . import logger
 
+from . import logger
+from ...models import ProductMap, G2GProductMapping, ProviderMode
 from ...background_tasks import (
     check_lpk_order_status_cron_job,
     check_eli_order_status_cron_job,
 )
-from ...utils import load_product_mapping_from_sheet
+from ...utils import load_product_mapping_and_rates_from_sheet
 
 from app.g2g.api_client import g2g_api_client
 from app.g2g.models import GetOfferResponse
 from app.elite.api_client import elitedias_api_client
 from app.lpk.api_client import lpk_api_client
 from app.lpk.utils import get_lowest_price_from_list_code
+from app.lpk.models import Product as LpkProduct
 from app.shared.utils import (
-    load_delivery_method_list_mapping,
+    load_lapak_delivery_method_list_mapping,
     load_eli_delivery_method_list_mapping,
-    load_eli_product_mapping,
 )
 from app.lpk.models import OrderPayload
-from app.shared.models import StoreModel, EliStoreModel
+from app.shared.models import LpkStoreModel, EliStoreModel
+from app.sheet.models import LogToSheet
+from app.shared.utils import afunc_retry
 
 from app import kv_store, config, eli_kv_store
 
 DEFAULT_KEY: Final[str] = "DEFAULT_KEY"
 
 
+async def api_delivery_hanlder(
+    payload: APIDeliveryPayload,
+    background_tasks: BackgroundTasks,
+):
+    # Check if delivery method code is DIRECT TOP UP
+    if (
+        payload.delivery_summary.delivery_method_code
+        is DeliveryMethodCode.DIRECT_TOP_UP
+    ):
+        await handle_direct_topup_api_delivery(payload, background_tasks)
+    return {"message": "ok"}
+
+
 def map_delivery_method_list(
     payload: APIDeliveryPayload,
     product_delivery_method_list_mapping: dict,
-    key: Literal["user_id", "additional_id"],
-) -> str | None:
-    for delivery_method_list in payload.delivery_summary.delivery_method_list:
-        if key in product_delivery_method_list_mapping:
-            _mapping = product_delivery_method_list_mapping[key]
-            if isinstance(_mapping, str):
-                if _mapping == delivery_method_list.attribute_group_id:
-                    if delivery_method_list.value:
-                        return delivery_method_list.value
-                    else:
-                        return delivery_method_list.attribute_value
-            elif isinstance(_mapping, dict):
-                if DEFAULT_KEY in _mapping:
-                    return _mapping[DEFAULT_KEY]
-                if delivery_method_list.attribute_group_id in _mapping:
-                    _value_mapping = _mapping[delivery_method_list.attribute_group_id]
-                    if delivery_method_list.value in _value_mapping:
-                        return _value_mapping[delivery_method_list.value]
-                    elif delivery_method_list.attribute_value in _value_mapping:
-                        return _value_mapping[delivery_method_list.attribute_value]
+) -> dict:
+    mapping_payload: dict = {}
 
-    return None
-
-
-def map_eli_delivery_method_list(
-    payload: APIDeliveryPayload,
-    eli_product_delivery_method_list_mapping: dict,
-) -> dict | None:
     for delivery_method_list in payload.delivery_summary.delivery_method_list:
         for (
             payload_key,
             map_attribute_group_id,
-        ) in eli_product_delivery_method_list_mapping.items():
-            if delivery_method_list.attribute_group_id == map_attribute_group_id:
-                if delivery_method_list.value:
-                    return {payload_key: delivery_method_list.value}
-                else:
-                    return {payload_key: delivery_method_list.attribute_value}
+        ) in product_delivery_method_list_mapping.items():
+            # This case handle for no need to mapping value
+            if isinstance(map_attribute_group_id, str):
+                if delivery_method_list.attribute_group_id == map_attribute_group_id:
+                    if delivery_method_list.value:
+                        mapping_payload[payload_key] = delivery_method_list.value
+                    else:
+                        mapping_payload[payload_key] = (
+                            delivery_method_list.attribute_value
+                        )
+            if isinstance(map_attribute_group_id, dict):
+                for attribute_group_id, value_mapping in map_attribute_group_id.items():
+                    # This case handle for Default Key
+                    if DEFAULT_KEY == attribute_group_id:
+                        mapping_payload[payload_key] = value_mapping
 
-    return None
+                    # This case handle for mapping value
+                    if delivery_method_list.attribute_group_id == attribute_group_id:
+                        if delivery_method_list.value in value_mapping:
+                            mapping_payload[payload_key] = value_mapping[
+                                delivery_method_list.value
+                            ]
+                        elif delivery_method_list.attribute_value in value_mapping:
+                            mapping_payload[payload_key] = value_mapping[
+                                delivery_method_list.attribute_value
+                            ]
+
+    return mapping_payload
 
 
 async def eli_delivery(
     payload: APIDeliveryPayload,
     background_tasks: BackgroundTasks,
     offer: GetOfferResponse,
-    eli_product_mappping: dict[str, dict[str, dict[str, dict[str, str]]]],
-    eli_delivery_method_list_mapping: dict[str, dict[str, str]],
-    log_message: str,
+    product_map: ProductMap,
+    SGD_to_USD_rate: float,
+    eli_delivery_method_list_mapping: dict,
+    log_to_sheet: LogToSheet,
 ):
+    logger.info("Delivery with Elitedias")
+    log_to_sheet.provider = "Elitedias"
     logger.info(f"Supported product id: {offer.product_id}")
-    log_message += f"Supported product id: {offer.product_id}\n"
 
+    if (
+        not product_map["elitedias"]
+        or not product_map["elitedias"]["game"]
+        or not product_map["elitedias"]["denom"]
+    ):
+        logger.info(
+            f"Missing mapping product G2G - Elitedias for product: {offer.product_id}"
+        )
+        log_to_sheet.append_note(
+            f"Missing mapping product G2G - Elitedias for product: {offer.product_id}"
+        )
+        log_to_sheet.update
+        return
+
+    log_to_sheet.provider_product_id = (
+        f"{product_map['elitedias']['game']} | {product_map['elitedias']['denom']}"
+    )
+    logger.info(
+        f"Getting elitedias product price | game: {product_map['elitedias']['game']}, denom: {product_map['elitedias']['denom']}"
+    )
+    elite_unit_price: float | None = None
+    try:
+        elite_unit_price = await afunc_retry(elitedias_api_client.get_price)(
+            game=product_map["elitedias"]["game"],
+            denom=product_map["elitedias"]["denom"],
+        )
+    except Exception:
+        pass
+
+    if elite_unit_price:
+        log_to_sheet.buy_price_in_provider_curency = str(
+            payload.purchased_qty * elite_unit_price
+        )
+        log_to_sheet.buy_price_use = str(
+            payload.purchased_qty * elite_unit_price * SGD_to_USD_rate
+        )
+    else:
+        log_to_sheet.buy_price_in_provider_curency = "Can not retrieve"
+        log_to_sheet.buy_price_use = "Can not retrieve"
     eli_topup_payload: dict = {}
-    for attribute in offer.offer_attributes:
-        if (
-            attribute.attribute_group_id in eli_product_mappping[offer.product_id]
-            and attribute.attribute_id
-            in eli_product_mappping[offer.product_id][attribute.attribute_group_id]
-        ):
-            eli_topup_payload.update(
-                eli_product_mappping[offer.product_id][attribute.attribute_group_id][
-                    attribute.attribute_id
-                ]
-            )
-            logger.info(f"Updated elitedias topup payload: {eli_topup_payload}")
-            log_message += f"Updated elitedias topup payload: {eli_topup_payload}\n"
+    # Fill game and demon
+    eli_topup_payload.update(product_map["elitedias"])
 
-    map_eli_delivery_method_list_dict = map_eli_delivery_method_list(
+    if offer.product_id not in eli_delivery_method_list_mapping:
+        logger.info(
+            f"Missing delivery method list mappping G2G - Elitedias for product: {offer.product_id}"
+        )
+        log_to_sheet.append_note(
+            f"Missing delivery method list mappping G2G - Elitedias for product: {offer.product_id}"
+        )
+        log_to_sheet.update()
+        return
+
+    # Find to fill userid and (serverid)
+    map_eli_delivery_method_list_dict = map_delivery_method_list(
         payload=payload,
-        eli_product_delivery_method_list_mapping=eli_delivery_method_list_mapping[
+        product_delivery_method_list_mapping=eli_delivery_method_list_mapping[
             offer.product_id
         ],
     )
@@ -113,14 +164,16 @@ async def eli_delivery(
         eli_topup_payload.update(map_eli_delivery_method_list_dict)
 
     logger.info(f"Updated elitedias topup payload: {eli_topup_payload}")
-    log_message += f"Updated elitedias topup payload: {eli_topup_payload}\n"
+    log_to_sheet.append_note(f"Order payload: {eli_topup_payload}")
 
     eli_order_ids: list[str] = []
 
+    failed_reason: str | None = None
+    # Create offer to Elitedias
     retry_time: int = 0
     while (
         len(eli_order_ids) < payload.purchased_qty
-        and retry_time < 3 * payload.purchased_qty
+        and retry_time < 2 + payload.purchased_qty
     ):
         create_topup_res = await elitedias_api_client.create_topup(eli_topup_payload)
         if create_topup_res.order_id is None or (
@@ -129,6 +182,7 @@ async def eli_delivery(
             logger.info(
                 f"Failed to create Elitedias. Reason: {create_topup_res.message}"
             )
+            failed_reason = create_topup_res.message
 
         else:
             eli_order_ids.append(create_topup_res.order_id)
@@ -143,172 +197,285 @@ async def eli_delivery(
                 eli_order_ids=eli_order_ids,
                 delivery_id=payload.delivery_summary.delivery_id,
                 quantity=payload.purchased_qty,
+                log_index=log_to_sheet.index,
             ),
         )
         background_tasks.add_task(check_eli_order_status_cron_job, payload.order_id)
+        log_to_sheet.provider_order_ids = "\n".join(eli_order_ids)
         logger.info(
             f"Successfully create order to Elitedias with G2G order id: {payload.order_id}"
         )
-        log_message += f"Successfully create order to Elitedias with G2G order id: {payload.order_id}\n"
+        log_to_sheet.append_note(
+            f"Successfully create order to Elitedias with G2G order id: {payload.order_id}"
+        )
     else:
         logger.info(
             f"FAILED create order to Elitedias with G2G order id: {payload.order_id}"
         )
-        log_message += (
-            f"FAILED create order to Elitedias with G2G order id: {payload.order_id}\n"
+        log_to_sheet.append_note(
+            f"FAILED create order to Elitedias with G2G order id: {payload.order_id}. Failed reason: {failed_reason}"
         )
 
-    LogToSheet.write_log(log_message)
-    return {"message": "ok"}
+    log_to_sheet.update()
+    return
 
 
-async def api_delivery_hanlder(
+def lapak_delivery(
+    payload: APIDeliveryPayload,
+    background_tasks: BackgroundTasks,
+    offer: GetOfferResponse,
+    product_map: ProductMap,
+    IDR_to_USD_rate: float,
+    lapak_delivery_method_list_mapping: dict,
+    log_to_sheet: LogToSheet,
+    min_price_product: LpkProduct | None = None,
+):
+    logger.info("Delivery with Lapakgaming")
+    log_to_sheet.provider = "Lapakgaming"
+    logger.info(f"Supported product id: {offer.product_id}")
+
+    if min_price_product is None and product_map["lapakgaming"]:
+        product_codes = product_map["lapakgaming"].split(",")
+        min_price_product = get_lowest_price_from_list_code(product_codes)
+
+    if min_price_product is None:
+        # Handle when min_price_product is None
+        logger.info(
+            f"Can not find min price lapakgaming product for product: {offer.product_id}"
+        )
+        log_to_sheet.append_note(
+            f"Can not find min price lapakgaming product for product: {offer.product_id}"
+        )
+        log_to_sheet.update()
+        return
+
+    log_to_sheet.buy_price_in_provider_curency = str(
+        min_price_product.price * payload.purchased_qty
+    )
+    log_to_sheet.buy_price_use = str(
+        min_price_product.price * payload.purchased_qty * IDR_to_USD_rate
+    )
+    log_to_sheet.provider_product_id = min_price_product.code
+
+    if offer.product_id not in lapak_delivery_method_list_mapping:
+        logger.info(
+            f"Missing delivery method list mappping G2G - Lapakgaming for product: {offer.product_id}"
+        )
+        log_to_sheet.append_note(
+            f"Missing delivery method list mappping G2G - EliLapakgamingtedias for product: {offer.product_id}"
+        )
+        log_to_sheet.update()
+
+    map_lpk_delivery_method_list = map_delivery_method_list(
+        payload,
+        lapak_delivery_method_list_mapping[offer.product_id],
+    )
+
+    lpk_order_payload = OrderPayload.model_validate(
+        {
+            "count_order": payload.purchased_qty,
+            "product_code": min_price_product.code,
+            **map_lpk_delivery_method_list,
+        }
+    )
+    logger.info(f"""Payload: {lpk_order_payload.model_dump_json()}""")
+    log_to_sheet.append_note(f"Order payload: {lpk_order_payload.model_dump_json()}")
+    try:
+        lpk_create_order_res = lpk_api_client.create_order(lpk_order_payload)
+    except Exception as e:
+        logger.exception(e)
+        logger.info("Fail to create lpk_offer")
+
+    if lpk_create_order_res.data:
+        kv_store.set(
+            lpk_create_order_res.data.tid,
+            LpkStoreModel(
+                order_id=payload.order_id,
+                delivery_id=payload.delivery_summary.delivery_id,
+                quantity=lpk_order_payload.count_order,
+                log_index=log_to_sheet.index,
+            ),
+        )
+        background_tasks.add_task(
+            check_lpk_order_status_cron_job,
+            lpk_create_order_res.data.tid,
+        )
+        log_to_sheet.provider_order_ids = lpk_create_order_res.data.tid
+        log_to_sheet.append_note(
+            f"Successfully create order to Lapakgaming with G2G order id: {payload.order_id}"
+        )
+    else:
+        logger.info("Fail to create lpk_offer")
+        log_to_sheet.append_note(
+            f"FAILED create order to Lapakgaming with G2G order id: {payload.order_id}"
+        )
+
+    log_to_sheet.update()
+
+
+def find_product_map(
+    offer: GetOfferResponse,
+    product_mapping: G2GProductMapping,
+) -> ProductMap | None:
+    if offer.product_id in product_mapping:
+        for attribute in offer.offer_attributes:
+            if (
+                attribute.attribute_group_id in product_mapping[offer.product_id]
+                and attribute.attribute_id
+                in product_mapping[offer.product_id][attribute.attribute_group_id]
+            ):
+                return product_mapping[offer.product_id][attribute.attribute_group_id][
+                    attribute.attribute_id
+                ]
+
+    return None
+
+
+async def handle_direct_topup_api_delivery(
     payload: APIDeliveryPayload,
     background_tasks: BackgroundTasks,
 ):
-    # Check if delivery method code is DIRECT TOP UP
-    if (
-        payload.delivery_summary.delivery_method_code
-        is DeliveryMethodCode.DIRECT_TOP_UP
-    ):
-        logger.info("Handling Direct top up")
+    logger.info(f"Handling Direct top up for order ID: {payload.order_id}")
+    log_to_sheet = LogToSheet.register_note_row()
+    log_to_sheet.g2g_order_id = payload.order_id
+    log_to_sheet.g2g_offer_id = payload.offer_id
 
-        # Load mappping for G2G - Lapakgaming
-        product_mapping = load_product_mapping_from_sheet(
-            sheet_id=config.SHEET_ID, sheet_name=config.MAPPING_SHEET_NAME, start_row=2
+    # Load product mapppings and curency exchange rate
+    logger.info("Loading product mapppings and curency exchange rate")
+    product_mapping, IDR_to_USD_rate, SGD_to_USD_rate = (
+        load_product_mapping_and_rates_from_sheet(
+            sheet_id=config.SHEET_ID,
+            sheet_name=config.MAPPING_SHEET_NAME,
+            start_row=2,
         )
-        delivery_method_list_mapping = load_delivery_method_list_mapping()
+    )
 
-        # Load mapping for G2G - Elitedias
-        eli_product_mapping = load_eli_product_mapping()
-        eli_delivery_method_list_mapping = load_eli_delivery_method_list_mapping()
+    log_to_sheet.append_note(
+        f"IDR -> USE rate: {IDR_to_USD_rate:.10f} | SGD -> USD rate: {SGD_to_USD_rate}"
+    )
 
-        # Get offer by offer id
-        offer = g2g_api_client.get_offer(payload.offer_id).payload
-        logger.info(f"Offer ID: {offer.offer_id} | Title: {offer.title}")
-        log_message: str = f"Offer ID: {offer.offer_id} | Title: {offer.title}\n"
+    # Load delivery method list mapping for Lapakgaming
+    lapak_delivery_method_list_mapping = load_lapak_delivery_method_list_mapping()
 
-        # Handel delivery with Elitedias
+    # Load delivery method list mapping for Elitedias
+    eli_delivery_method_list_mapping = load_eli_delivery_method_list_mapping()
+
+    # Get offer by offer id
+    logger.info(f"Getting offer in for with offer ID: {payload.offer_id}")
+    offer = g2g_api_client.get_offer(payload.offer_id).payload
+    logger.info(f"Offer Title: {offer.title}")
+    log_to_sheet.g2g_product_id = offer.product_id
+
+    # Get product map
+    product_map = find_product_map(offer, product_mapping)
+    if product_map is None:
+        # Handle product map in None
+
+        log_to_sheet.append_note(
+            f"Can not find product mapping for product ID: {offer.product_id}"
+        )
+        log_to_sheet.update()
+        return
+
+    log_to_sheet.sell_price = str(payload.purchased_qty * offer.unit_price)
+    log_to_sheet.sell_quantity = str(payload.purchased_qty)
+
+    if product_map["provider_mode"] == ProviderMode.ELITEDIAS.value:
+        await eli_delivery(
+            payload,
+            background_tasks,
+            offer,
+            product_map,
+            SGD_to_USD_rate,
+            eli_delivery_method_list_mapping,
+            log_to_sheet,
+        )
+    elif product_map["provider_mode"] == ProviderMode.LAPAKGAMING.value:
+        lapak_delivery(
+            payload,
+            background_tasks,
+            offer,
+            product_map,
+            IDR_to_USD_rate,
+            lapak_delivery_method_list_mapping,
+            log_to_sheet,
+            None,
+        )
+    elif product_map["provider_mode"] == ProviderMode.AUTO.value:
         if (
-            offer.product_id in eli_product_mapping
-            and offer.product_id in eli_delivery_method_list_mapping
+            not product_map["elitedias"]
+            or not product_map["elitedias"]["game"]
+            or not product_map["elitedias"]["denom"]
         ):
-            return await eli_delivery(
-                payload=payload,
-                background_tasks=background_tasks,
-                offer=offer,
-                eli_product_mappping=eli_product_mapping,
-                eli_delivery_method_list_mapping=eli_delivery_method_list_mapping,
-                log_message=log_message,
+            lapak_delivery(
+                payload,
+                background_tasks,
+                offer,
+                product_map,
+                IDR_to_USD_rate,
+                lapak_delivery_method_list_mapping,
+                log_to_sheet,
+                None,
+            )
+        elif not product_map["lapakgaming"]:
+            await eli_delivery(
+                payload,
+                background_tasks,
+                offer,
+                product_map,
+                SGD_to_USD_rate,
+                eli_delivery_method_list_mapping,
+                log_to_sheet,
+            )
+        else:
+            min_lpk_product = get_lowest_price_from_list_code(
+                product_map["lapakgaming"].split(",")
             )
 
-        # Mapping G2G product with Lapak
-        if (
-            offer.product_id in product_mapping
-            and offer.product_id in delivery_method_list_mapping
-        ):
-            logger.info(f"Supported product id: {offer.product_id}")
-            log_message += f"Supported product id: {offer.product_id}\n"
-
-            valided_lpk_product_codes_str: str | None = None
-            user_id: str | None = None
-            additional_id: str | None = None
-
-            for attribute in offer.offer_attributes:
-                if (
-                    attribute.attribute_group_id in product_mapping[offer.product_id]
-                    and attribute.attribute_id
-                    in product_mapping[offer.product_id][attribute.attribute_group_id]
-                ):
-                    logger.info(
-                        f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}"
-                    )
-                    log_message += f"Valid lapak product code: {product_mapping[offer.product_id][attribute.attribute_group_id][attribute.attribute_id]}\n"
-                    valided_lpk_product_codes_str = product_mapping[offer.product_id][
-                        attribute.attribute_group_id
-                    ][attribute.attribute_id]
-
-            product_delivery_method_list_mapping = delivery_method_list_mapping[
-                offer.product_id
-            ]
-
-            user_id = map_delivery_method_list(
-                payload=payload,
-                product_delivery_method_list_mapping=product_delivery_method_list_mapping,
-                key="user_id",
+            eli_denominations = await elitedias_api_client.get_denominations(
+                product_map["elitedias"]["game"]
             )
+            eli_price = eli_denominations[product_map["elitedias"]["denom"]]
 
-            logger.info(f"User id: {user_id}")
-            log_message += f"User id: {user_id}\n"
-
-            additional_id = map_delivery_method_list(
-                payload=payload,
-                product_delivery_method_list_mapping=product_delivery_method_list_mapping,
-                key="additional_id",
-            )
-
-            logger.info(f"Additional id: {additional_id}")
-            log_message += f"Additional id: {additional_id}\n"
-
-            # Find the lowest lapak product
-            if valided_lpk_product_codes_str:
-                min_lpk_product = get_lowest_price_from_list_code(
-                    [code.strip() for code in valided_lpk_product_codes_str.split(",")]
+            if not min_lpk_product:
+                await eli_delivery(
+                    payload,
+                    background_tasks,
+                    offer,
+                    product_map,
+                    SGD_to_USD_rate,
+                    eli_delivery_method_list_mapping,
+                    log_to_sheet,
                 )
-
-                if min_lpk_product:
-                    logger.info(f"Lowest product: {min_lpk_product.model_dump_json()}")
-                    log_message += (
-                        f"Lowest product: {min_lpk_product.model_dump_json()}\n"
+            else:
+                logger.info(f"Lapak price: {min_lpk_product.price} IDR")
+                min_lpk_usd_price = min_lpk_product.price * IDR_to_USD_rate
+                logger.info(f"Elite price: {eli_price} SGD")
+                eli_usd_price = float(eli_price) * SGD_to_USD_rate
+                logger.info(
+                    f"LAPAK Price: {min_lpk_usd_price} USD | ELITE Price: {eli_usd_price} USD"
+                )
+                log_to_sheet.append_note(
+                    f"LAPAK Price: {min_lpk_usd_price} USD | ELITE Price: {eli_usd_price} USD"
+                )
+                if min_lpk_usd_price < eli_usd_price:
+                    lapak_delivery(
+                        payload,
+                        background_tasks,
+                        offer,
+                        product_map,
+                        IDR_to_USD_rate,
+                        lapak_delivery_method_list_mapping,
+                        log_to_sheet,
+                        min_lpk_product,
                     )
-
-                    # Only delivery when g2g offer price < lapak product price
-                    fx_rate = lpk_api_client.get_fx_rate()
-
-                    idr_g2g_offer_price = offer.unit_price * fx_rate.data.buy_rate
-                    logger.info(
-                        f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}"
-                    )
-                    log_message += f"Price: IDR G2G: {idr_g2g_offer_price} | LPK: {min_lpk_product.price}\n"
-
-                    order_payload = OrderPayload.model_validate(
-                        {
-                            "user_id": user_id,
-                            "additional_id": additional_id,
-                            "count_order": payload.purchased_qty,
-                            "product_code": min_lpk_product.code,
-                        }
-                    )
-                    logger.info(f"""Payload: {order_payload.model_dump_json()}""")
-                    try:
-                        lpk_create_order_res = lpk_api_client.create_order(
-                            order_payload
-                        )
-                    except Exception as e:
-                        logger.exception(e)
-                        logger.info("Fail to create lpk_offer")
-                        log_message += "Fail to create lpk_offer\n"
-
-                    if lpk_create_order_res.data:
-                        kv_store.set(
-                            lpk_create_order_res.data.tid,
-                            StoreModel(
-                                order_id=payload.order_id,
-                                delivery_id=payload.delivery_summary.delivery_id,
-                                quantity=order_payload.count_order,
-                            ),
-                        )
-                        background_tasks.add_task(
-                            check_lpk_order_status_cron_job,
-                            lpk_create_order_res.data.tid,
-                        )
-                    else:
-                        logger.info("Fail to create lpk_offer")
-                        log_message += "Fail to create lpk_offer\n"
-
                 else:
-                    logger.info("Product in lapak is not available")
-                    log_message += "Product in lapak is not available"
-
-        LogToSheet.write_log(log_message)
-    return {"message": "ok"}
+                    await eli_delivery(
+                        payload,
+                        background_tasks,
+                        offer,
+                        product_map,
+                        SGD_to_USD_rate,
+                        eli_delivery_method_list_mapping,
+                        log_to_sheet,
+                    )

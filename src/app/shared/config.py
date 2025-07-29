@@ -15,6 +15,8 @@ class Config(BaseModel):
     SHEET_ID: str
     SHEET_NAME: str
     MAPPING_SHEET_NAME: str
+    IDR_TO_USD_RATE_CELL: str = "T2"
+    SGD_TO_USD_RATE_CELL: str = "U2"
 
     # Log sheets
     LOG_SHEET_ID: str

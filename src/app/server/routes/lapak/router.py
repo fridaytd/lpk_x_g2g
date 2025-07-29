@@ -8,7 +8,7 @@ from .utiles import is_success_order
 from ...background_tasks import check_lpk_order_status_cron_job
 
 from app import kv_store
-from app.shared.models import StoreModel
+from app.shared.models import LpkStoreModel
 from app.g2g.models import PatchDeliveryPayload
 from app.g2g.api_client import g2g_api_client
 from app.sheet.models import LogToSheet
@@ -34,7 +34,7 @@ async def order_callback(
     payload: OrderCallbackPayload, background_tasks: BackgroundTasks
 ) -> dict:
     tid = payload.data.tid
-    mapped_order: StoreModel | None = kv_store.get(tid)
+    mapped_order: LpkStoreModel | None = kv_store.get(tid)
     if mapped_order is None:
         return {
             "message": "SUCCESS",
@@ -50,7 +50,10 @@ async def order_callback(
                 ),
             ),
         )
-        LogToSheet.write_log(f"Delivery success for order id: {mapped_order.order_id}")
+        LogToSheet.note_delivery(
+            mapped_order.log_index,
+            f"Delivery success for order id: {mapped_order.order_id}",
+        )
         kv_store.delete(tid)
     else:
         background_tasks.add_task(check_lpk_order_status_cron_job, tid)

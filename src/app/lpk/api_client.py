@@ -45,51 +45,53 @@ class LpkAPIClient:
 
         return Response[CategoryResponse].model_validate(res.json())
 
-    @retry_on_fail()
-    def get_products(self, category_code: str, country_code: str = "id") -> None:
-        logger.info("API Get all product")
+    # WARNING: Need to check before using
+    # @retry_on_fail()
+    # def get_products(
+    #     self, category_code: str, country_code: str = "id"
+    # ) -> Response[CategoryResponse]:
+    #     logger.info("API Get all product")
 
-        headers = {
-            "Authorization": f"Bearer {config.LAPAK_API_KEY}",
-        }
+    #     headers = {
+    #         "Authorization": f"Bearer {config.LAPAK_API_KEY}",
+    #     }
 
-        res = self.client.get(
-            f"{self.base_url}/api/product?category_code={category_code}&country_code={country_code}",
-            headers=headers,
-        )
+    #     res = self.client.get(
+    #         f"{self.base_url}/api/product?category_code={category_code}&country_code={country_code}",
+    #         headers=headers,
+    #     )
 
-        try:
-            res.raise_for_status()
-            print(res.json())
-        except httpx.HTTPStatusError as e:
-            logger.exception(e)
-            logger.info(res.text)
-            res.raise_for_status()
+    #     try:
+    #         res.raise_for_status()
+    #     except httpx.HTTPStatusError as e:
+    #         logger.exception(e)
+    #         logger.info(res.text)
+    #         res.raise_for_status()
 
-        # return Response[CategoryResponse].model_validate(res.json())
+    #     return Response[CategoryResponse].model_validate(res.json())
 
-    @retry_on_fail()
-    def get_product_with_code(self, code: str) -> None:
-        logger.info("API Get all product")
+    # WARNING: Need to check before using
+    # @retry_on_fail()
+    # def get_product_with_code(self, code: str) -> None:
+    #     logger.info("API Get all product")
 
-        headers = {
-            "Authorization": f"Bearer {config.LAPAK_API_KEY}",
-        }
+    #     headers = {
+    #         "Authorization": f"Bearer {config.LAPAK_API_KEY}",
+    #     }
 
-        res = self.client.get(
-            f"{self.base_url}/api/product?product_code={code}",
-            headers=headers,
-        )
+    #     res = self.client.get(
+    #         f"{self.base_url}/api/product?product_code={code}",
+    #         headers=headers,
+    #     )
 
-        try:
-            res.raise_for_status()
-            print(res.json())
-        except httpx.HTTPStatusError as e:
-            logger.exception(e)
-            logger.info(res.text)
-            res.raise_for_status()
+    #     try:
+    #         res.raise_for_status()
+    #     except httpx.HTTPStatusError as e:
+    #         logger.exception(e)
+    #         logger.info(res.text)
+    #         res.raise_for_status()
 
-        return res.json()
+    #     return res.json()
 
     @retry_on_fail()
     def get_all_products(self, country_code: str = "id") -> Response[ProductResponse]:
@@ -115,9 +117,6 @@ class LpkAPIClient:
 
     @retry_on_fail(max_retries=2, sleep_interval=5)
     def create_order(self, order: OrderPayload) -> CreatedOrderResposne:
-        # return CreatedOrderResposne.model_validate(
-        #     {"code": "SUCCESS", "data": {"tid": "test_tid", "total_price": 1}}
-        # )
         logger.info("API Create order")
 
         headers = {

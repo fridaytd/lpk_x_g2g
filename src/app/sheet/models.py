@@ -88,6 +88,15 @@ class ColSheetModel(BaseModel):
         return mapping_fields
 
     @classmethod
+    def get_col_by_attribute_name(cls, attribute_name: str) -> str:
+        mapping_fields = cls.mapping_fields()
+        for field_name, col_name in mapping_fields.items():
+            if attribute_name == field_name:
+                return col_name
+
+        raise SheetError(f"Can not field col with attribute name: {attribute_name}")
+
+    @classmethod
     def get(
         cls,
         sheet_id: str,
@@ -535,10 +544,31 @@ class G2GTopUpProduct(ColSheetModel):
             IS_UPDATE_META: True,
         },
     ] = None
-    lapak_code: Annotated[
+    lapak_codes: Annotated[
         str | None,
         {
             COL_META: "O",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    eli_game: Annotated[
+        str | None,
+        {
+            COL_META: "P",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    eli_denomination: Annotated[
+        str | None,
+        {
+            COL_META: "Q",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    provider_mode: Annotated[
+        str | None,
+        {
+            COL_META: "R",
             IS_UPDATE_META: True,
         },
     ] = None
@@ -548,7 +578,24 @@ class G2GTopUpProduct(ColSheetModel):
         sheet_id: str,
         sheet_name: str,
         start_row: int,
-    ) -> list["G2GTopUpProduct"]:
+    ) -> tuple[list["G2GTopUpProduct"], float, float]:
+        """
+        Retrieves all G2G top-up product data from a specified Google Sheet along with currency exchange rates.
+        Args:
+            sheet_id (str): The ID of the Google Sheet to read from
+            sheet_name (str): The name of the specific worksheet to read
+            start_row (int): The row number to start reading data from
+        Returns:
+            tuple[list[G2GTopUpProduct], float, float]: A tuple containing:
+                - List of G2GTopUpProduct objects parsed from the sheet
+                - IDR to USD exchange rate
+                - SGD to USD exchange rate
+        Notes:
+            - Skips invalid rows that fail model validation
+            - Exchange rates will be -1 if not found in specified cells
+            - Only processes columns that match the G2GTopUpProduct field mappings
+        """
+
         g2g_top_up_products: list[G2GTopUpProduct] = []
         worksheet = G2GTopUpProduct.get_worksheet(
             sheet_id=sheet_id, sheet_name=sheet_name
@@ -562,6 +609,11 @@ class G2GTopUpProduct(ColSheetModel):
         reversed_mapping_dict: dict = {v: k for k, v in mapping_fields.items()}
 
         for cell in all_cells:
+            if cell.address == config.IDR_TO_USD_RATE_CELL:
+                IDR_to_USE_rate = float(cell.value if cell.value else -1)
+            if cell.address == config.SGD_TO_USD_RATE_CELL:
+                SGD_to_USE_rate = float(cell.value if cell.value else -1)
+
             if cell.row >= start_row:
                 if str(cell.row) not in _temp_product_dict:
                     _temp_product_dict[str(cell.row)] = {
@@ -581,7 +633,7 @@ class G2GTopUpProduct(ColSheetModel):
             except ValidationError:
                 pass
 
-        return g2g_top_up_products
+        return g2g_top_up_products, IDR_to_USE_rate, SGD_to_USE_rate
 
 
 class LPKProduct(ColSheetModel):
@@ -680,10 +732,94 @@ class LogToSheet(ColSheetModel):
             IS_UPDATE_META: True,
         },
     ] = None
-    note: Annotated[
+    g2g_order_id: Annotated[
         str | None,
         {
             COL_META: "B",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    g2g_offer_id: Annotated[
+        str | None,
+        {
+            COL_META: "C",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    g2g_product_id: Annotated[
+        str | None,
+        {
+            COL_META: "D",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    provider: Annotated[
+        str | None,
+        {
+            COL_META: "E",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    buy_price_use: Annotated[
+        str | None,
+        {
+            COL_META: "F",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    buy_price_in_provider_curency: Annotated[
+        str | None,
+        {
+            COL_META: "G",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    sell_price: Annotated[
+        str | None,
+        {
+            COL_META: "H",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    sell_quantity: Annotated[
+        str | None,
+        {
+            COL_META: "I",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    provider_product_id: Annotated[
+        str | None,
+        {
+            COL_META: "J",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    provider_order_ids: Annotated[
+        str | None,
+        {
+            COL_META: "K",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    receive_note: Annotated[
+        str | None,
+        {
+            COL_META: "L",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    delivery_at: Annotated[
+        str | None,
+        {
+            COL_META: "M",
+            IS_UPDATE_META: True,
+        },
+    ] = None
+    delivery_note: Annotated[
+        str | None,
+        {
+            COL_META: "N",
             IS_UPDATE_META: True,
         },
     ] = None
@@ -699,13 +835,44 @@ class LogToSheet(ColSheetModel):
 
         return len(worksheet.col_values(1))
 
-    @staticmethod
-    def write_log(
+    @classmethod
+    def register_note_row(cls) -> "LogToSheet":
+        worksheet = cls.get_worksheet(
+            sheet_id=cls.sheet_id,
+            sheet_name=cls.sheet_name,
+        )
+        next_log_row_index = len(worksheet.col_values(1)) + 1
+        time_col = cls.get_col_by_attribute_name("time")
+        time_value = formated_datetime(datetime.now())
+        worksheet.update([[time_value]], f"{time_col}{next_log_row_index}")
+        return LogToSheet(index=next_log_row_index, time=time_value)
+
+    @classmethod
+    def note_delivery(
+        cls,
+        note_index: int,
         note: str,
     ) -> None:
-        last_row_index = LogToSheet.get_last_log_row()
-        LogToSheet(
-            index=last_row_index + 1,
-            time=formated_datetime(datetime.now()),
-            note=note,
-        ).update()
+        delivery_at_col = cls.get_col_by_attribute_name("delivery_at")
+        delivery_note_col = cls.get_col_by_attribute_name("delivery_note")
+        cls.free_style_batch_update(
+            sheet_id=cls.sheet_id,
+            sheet_name=cls.sheet_name,
+            update_payloads=[
+                BatchCellUpdatePayload(
+                    cell=f"{delivery_at_col}{note_index}",
+                    value=formated_datetime(datetime.now()),
+                ),
+                BatchCellUpdatePayload(
+                    cell=f"{delivery_note_col}{note_index}",
+                    value=note,
+                ),
+            ],
+        )
+
+    def append_note(self, note: str) -> None:
+        if not self.receive_note:
+            self.receive_note = ""
+
+        self.receive_note += f"\n{note}"
+        self.receive_note.strip()

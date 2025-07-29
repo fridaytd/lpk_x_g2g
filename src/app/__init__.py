@@ -3,7 +3,7 @@ import logging
 from .shared.config import Config
 from .shared.stores import ModelKeyValueStore
 from .paths import SRC_PATH
-from .shared.models import StoreModel, EliStoreModel
+from .shared.models import LpkStoreModel, EliStoreModel
 
 ## Seting logger
 # Configure logging once at the application level
@@ -22,7 +22,7 @@ config = Config.from_env()
 kv_store = ModelKeyValueStore(
     name="order_mapping",
     save_dir=SRC_PATH / "data" / "store",
-    model=StoreModel,
+    model=LpkStoreModel,
 )
 
 eli_kv_store = ModelKeyValueStore(

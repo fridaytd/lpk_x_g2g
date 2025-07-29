@@ -41,8 +41,8 @@ def split_list(lst: list, chunk_size: int) -> list[list]:
     return [lst[i : i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def load_delivery_method_list_mapping() -> dict:
-    with open(DATA_PATH / "delivery_method_list_mapping.json") as f:
+def load_lapak_delivery_method_list_mapping() -> dict:
+    with open(DATA_PATH / "lapak_delivery_method_list_mapping.json") as f:
         return json.load(f)
 
 

@@ -11,7 +11,7 @@ from app.g2g.api_client import g2g_api_client
 from app.elite.api_client import elitedias_api_client
 from app.g2g.models import PatchDeliveryPayload
 from app import logger, kv_store, eli_kv_store
-from app.shared.models import StoreModel, EliStoreModel
+from app.shared.models import LpkStoreModel, EliStoreModel
 from app.shared.utils import afunc_retry
 from app.sheet.models import LogToSheet
 
@@ -30,7 +30,7 @@ def check_lpk_order_status_cron_job(tid: str):
             logger.info(
                 f"Background task check lpk order status is running with tid: {tid}"
             )
-            mapped_order: StoreModel | None = kv_store.get(tid)
+            mapped_order: LpkStoreModel | None = kv_store.get(tid)
             if mapped_order is None:
                 return
             order_status_res = lpk_api_client.get_order_status(tid=tid)
@@ -45,8 +45,9 @@ def check_lpk_order_status_cron_job(tid: str):
                         ),
                     ),
                 )
-                LogToSheet.write_log(
-                    f"Delivery success for order id: {mapped_order.order_id}"
+                LogToSheet.note_delivery(
+                    mapped_order.log_index,
+                    f"Delivery success for order id: {mapped_order.order_id}",
                 )
 
                 kv_store.delete(tid)
@@ -92,7 +93,10 @@ async def check_eli_order_status_cron_job(g2g_order_id: str) -> None:
                         ),
                     ),
                 )
-                LogToSheet.write_log(f"Delivery success for order id: {g2g_order_id}")
+                LogToSheet.note_delivery(
+                    mapped_order.log_index,
+                    f"Delivery success for order id: {g2g_order_id}",
+                )
                 eli_kv_store.delete(g2g_order_id)
                 return
 

@@ -20,7 +20,9 @@ async def hello_from_g2g() -> str:
 
 @router.post("")
 async def webhook(
-    order_event: OrderEvent, _: VerifySignatureDep, background_tasks: BackgroundTasks
+    order_event: OrderEvent,
+    _: VerifySignatureDep,
+    background_tasks: BackgroundTasks,
 ):
     match order_event.event_type:
         case OrderEventType.ORDER_API_DELIVERY:
@@ -29,14 +31,3 @@ async def webhook(
             return await api_delivery_hanlder(payload, background_tasks)
         case _:
             return
-
-
-# @router.post("")
-# async def webhook(order_event: OrderEvent, background_tasks: BackgroundTasks):
-#     match order_event.event_type:
-#         case OrderEventType.ORDER_API_DELIVERY:
-#             logger.info(order_event)
-#             payload = APIDeliveryPayload.model_validate(order_event.payload)
-#             return await api_delivery_hanlder(payload, background_tasks)
-#         case _:
-#             return

@@ -67,6 +67,11 @@ class ElitediasAPIClient:
 
             return res.json()
 
+    async def get_price(self, game: str, denom: str) -> float:
+        denom_dict = await self.get_denominations(game)
+
+        return float(denom_dict[denom])
+
     async def get_elitedias_game_fields_in_cache(
         self, game: str
     ) -> ElitediasGameFields:

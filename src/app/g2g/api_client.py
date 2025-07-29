@@ -123,7 +123,7 @@ class G2GAPIClient:
             try:
                 res.raise_for_status()
             except HTTPStatusError:
-                print(res.text)
+                logger.error(res.text)
                 raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
             return ResponseModel[ProductPayload].model_validate(res.json())
@@ -175,8 +175,6 @@ class G2GAPIClient:
         canonical_url = f"/{G2G_API_VERSION}/offers"
         headers = self.generate_authorization_header(canonical_url)
 
-        print(create_offer_request.model_dump_json(indent=4))
-
         res = self.http_client.post(
             canonical_url,
             headers=cast(dict[str, str], headers),
@@ -187,7 +185,6 @@ class G2GAPIClient:
         except HTTPStatusError:
             raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
-        print(res.json())
         return ResponseModel[CreateOfferResponse].model_validate(res.json())
 
     @retry_on_fail(max_retries=3, sleep_interval=2)
@@ -247,7 +244,7 @@ class G2GAPIClient:
         except HTTPStatusError:
             raise G2GAPIError(status_code=res.status_code, detail=res.text)
 
-        print(res.json())
+        logger.info(res.json())
 
     @retry_on_fail(max_retries=3, sleep_interval=2)
     def get_order(
@@ -298,7 +295,7 @@ class G2GAPIClient:
     ) -> ResponseModel[PathchDeliveryResponse]:
         canonical_url = f"/{G2G_API_VERSION}/orders/{order_id}/delivery/{delivery_id}"
         headers = self.generate_authorization_header(canonical_url)
-        print(payload.model_dump_json())
+        logger.info(payload.model_dump_json())
         res = self.http_client.patch(
             canonical_url,
             headers=cast(dict[str, str], headers),

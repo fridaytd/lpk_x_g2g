@@ -175,17 +175,23 @@ async def eli_delivery(
         len(eli_order_ids) < payload.purchased_qty
         and retry_time < 2 + payload.purchased_qty
     ):
-        create_topup_res = await elitedias_api_client.create_topup(eli_topup_payload)
-        if create_topup_res.order_id is None or (
-            create_topup_res.status and "success" not in create_topup_res.status
-        ):
-            logger.info(
-                f"Failed to create Elitedias. Reason: {create_topup_res.message}"
-            )
-            failed_reason = create_topup_res.message
+        try:
+            create_topup_res = await afunc_retry(
+                elitedias_api_client.create_topup, sleep_interval=5
+            )(eli_topup_payload)
 
-        else:
-            eli_order_ids.append(create_topup_res.order_id)
+            if create_topup_res.order_id is None or (
+                create_topup_res.status and "success" not in create_topup_res.status
+            ):
+                logger.info(
+                    f"Failed to create Elitedias. Reason: {create_topup_res.message}"
+                )
+                failed_reason = create_topup_res.message
+
+            else:
+                eli_order_ids.append(create_topup_res.order_id)
+        except Exception as e:
+            logger.exception(e)
 
         retry_time += 1
 

@@ -38,7 +38,7 @@ class TrackOrderResponse(BaseModel):
     denom: str | None = None
     userid: str | None = None
     serviceid: str | None = None
-    order_details: list[str] | None = None
+    order_details: list | None = None
     timestamp: float | None = None
     message: str | None = None
     code: str | None = None

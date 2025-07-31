@@ -3,10 +3,10 @@
         "userid": "a488b0e9",
         "serverid": {
             "20c73c0f": {
-                "Asia": "Asia",
-                "Europe": "Europe",
-                "America": "America",
-                "TW_HK_MO": "TW, HK, MO"
+                "Asia": "os_asia",
+                "Europe": "os_euro",
+                "America": "os_usa",
+                "TW_HK_MO": "os_cht"
             }
         }
     },
@@ -14,10 +14,10 @@
         "userid": "4d822572",
         "serverid": {
             "67987611": {
-                "America": "USA",
-                "Asia": "Asia",
-                "Europe": "Europe",
-                "TW, HK, MO": "TW, HK, MO"
+                "America": "os_usa",
+                "Asia": "os_asia",
+                "Europe": "os_euro",
+                "TW, HK, MO": "os_cht"
             }
         }
     },
@@ -25,10 +25,10 @@
         "userid": "1e0be099",
         "serverid": {
             "3d75455a": {
-                "America": "USA",
-                "Asia": "Asia",
-                "Europe": "Europe",
-                "TW_HK_MO": "TW, HK, MO"
+                "America": "os_usa",
+                "Asia": "os_asia",
+                "Europe": "os_euro",
+                "TW_HK_MO": "os_cht"
             }
         }
     },
